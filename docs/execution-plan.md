@@ -97,7 +97,7 @@
 
 ---
 
-## Phase 3 — Auth Module
+## Phase 3 — Auth Module ✅
 
 **Goal:** Full registration + email-verification + login flow working end-to-end.
 
@@ -112,19 +112,29 @@ GET  /api/v1/auth/me
 ```
 
 ### Tasks
-- [ ] `src/modules/auth/auth.schema.ts` — Zod schemas for each request body
-- [ ] `src/modules/auth/auth.service.ts` — business logic (DB queries, code generation, email send)
-- [ ] `src/modules/auth/auth.controller.ts` — thin HTTP layer, calls service, returns responses
-- [ ] `src/modules/auth/auth.router.ts` — Express router, wires endpoints
-- [ ] Mount router: `app.use('/api/v1/auth', authRouter)`
-- [ ] Business rules to enforce:
+- [x] `src/modules/auth/auth.schema.ts` — Zod schemas for each request body
+- [x] `src/modules/auth/auth.service.ts` — business logic (DB queries, code generation, email send)
+- [x] `src/modules/auth/auth.controller.ts` — thin HTTP layer, calls service, returns responses
+- [x] `src/modules/auth/auth.router.ts` — Express router, wires endpoints
+- [x] Mount router: `app.use('/api/v1/auth', authRouter)`
+- [x] Business rules to enforce:
   - `admin` role cannot be self-registered (reject with `400`)
   - Verification code expires in 15 minutes
   - `resend-verification` invalidates (deletes) old code before creating new
   - `login` rejects suspended/banned users with `403`
   - `login` rejects unverified users with `403`
   - When `role=vendor`, auto-create `Vendor` record on successful email verification
-- [ ] Integration tests: `tests/auth.test.ts` (see test-cases.md)
+- [x] Integration tests: `tests/auth.test.ts` — **28/28 passing**
+
+### Deviations & notes
+- **Zod 4 API change**: `z.enum` uses `error:` not `errorMap:` for custom error messages. Updated schema accordingly.
+- **Admin role in Zod schema**: Schema accepts `'customer' | 'vendor' | 'admin'`; service throws `BadRequestError("Cannot self-register as admin")` before the DB write. This produces `400 { message: "Cannot self-register as admin" }` (no `errors` field) as specified in the contract.
+- **devCode in non-production**: Register response includes `devCode` when `NODE_ENV !== 'production'` (covers both `development` and `test`). Used in integration tests to drive the verify-email flow without real email.
+- **jest.config.ts** updated: added `setupFiles: ['<rootDir>/tests/helpers/jestSetup.ts']` to override `DATABASE_URL → TEST_DATABASE_URL` and set `NODE_ENV=test` before any module loads.
+- **tests/helpers/jestSetup.ts**: Sets `DATABASE_URL = TEST_DATABASE_URL` and `NODE_ENV = 'test'` before test modules load. dotenv is called here first so the vars are available.
+- **tests/helpers/testSetup.ts**: Exports `prisma`, `clearDatabase()` (TRUNCATE CASCADE), `createTestUser(role)` (creates verified user + Vendor record for vendor role).
+- **Prerequisite**: Run `DATABASE_URL=<mvep_test_url> npx prisma migrate deploy` once before running integration tests.
+- **sendVerificationEmail is mocked** in integration tests (`jest.mock`) — no real SMTP calls. Mock call arguments expose the generated code, enabling verify-email tests without DB queries.
 
 ---
 

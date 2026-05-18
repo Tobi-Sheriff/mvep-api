@@ -3,6 +3,7 @@ import helmet from 'helmet';
 import cors from 'cors';
 import { config } from './config';
 import { errorHandler } from './middleware/errorHandler';
+import { authRouter } from './modules/auth/auth.router';
 
 const app = express();
 
@@ -14,8 +15,7 @@ app.get('/', (_req, res) => {
   res.json({ ok: true });
 });
 
-// Module routers are mounted here as they are built
-// app.use('/api/v1/auth',      authRouter);
+app.use('/api/v1/auth', authRouter);
 // app.use('/api/v1/products',  productsRouter);
 // app.use('/api/v1/orders',    ordersRouter);
 // app.use('/api/v1/users',     usersRouter);
