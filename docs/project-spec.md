@@ -33,10 +33,12 @@
 | Validation | `zod` (same as frontend) | Schemas can mirror frontend schemas exactly |
 | Testing | `jest` + `ts-jest` + `supertest` | First-class TypeScript; real HTTP testing |
 
-**Decision: Prisma 7 (latest).** The installed version uses a new project layout:
-- Generator `provider = "prisma-client"` outputs the client to `src/generated/prisma/` (not `node_modules/@prisma/client`).
-- Datasource URL lives in `prisma.config.ts` at the project root (reads `DATABASE_URL` from `.env`); no `url` field needed in `schema.prisma`.
-- **All Prisma imports across the codebase use the generated path**, e.g. `import { PrismaClient } from '../generated/prisma'`. Never import from `@prisma/client`.
+**Decision: Prisma 7 (latest) with `@prisma/adapter-pg`.** Prisma 7 removed the `url` field from `schema.prisma` entirely — even with `prisma-client-js`. All connections now go through a driver adapter. Project layout:
+- Generator `provider = "prisma-client"` outputs TypeScript source to `src/generated/prisma/`.
+- Datasource URL lives in `prisma.config.ts` (for CLI tools: migrate, studio). No `url` in `schema.prisma`.
+- **Runtime (`PrismaClient`) requires `@prisma/adapter-pg`**: `new PrismaClient({ adapter: new PrismaPg({ connectionString: DATABASE_URL }) })`.
+- **All Prisma imports use**: `import { PrismaClient } from '../generated/prisma/client'` (note `/client` suffix — that's the entry point file in the generated directory).
+- Model types are imported from the same path: `import type { User, Order } from '../generated/prisma/client'`.
 
 **Decision: No refresh tokens in v1.** Tokens have a 7-day TTL. A refresh token flow can be added in v2 without breaking the frontend.
 

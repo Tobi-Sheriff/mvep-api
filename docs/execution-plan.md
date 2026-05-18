@@ -40,21 +40,24 @@
 ### Deviations & notes
 - **`prisma` CLI** added as a dev dep (not in original plan) — needed for `npm run db:*` scripts to work without `npx`.
 - **`src/lib/errors.ts` + `src/middleware/errorHandler.ts`** built in Phase 0 rather than Phase 2 — they have no Prisma dependency and are needed by `app.ts` immediately.
-- **Prisma 7** was installed (latest). It introduced two changes vs earlier versions:
-  - Generator uses `provider = "prisma-client"` and outputs to `src/generated/prisma/` (not `node_modules/@prisma/client`).
-  - Datasource URL is defined in `prisma.config.ts` (reads `DATABASE_URL` from `.env`) rather than in `schema.prisma`.
-  - **Impact on Phase 1+:** All Prisma imports must use `../../generated/prisma` (relative path from each file) instead of `@prisma/client`. See project-spec.md § 2 for the full note.
+- **Prisma 7** was installed (latest). It has breaking changes vs Prisma 4/5/6:
+  - The `url` field is **removed** from `schema.prisma` entirely (applies to all generators).
+  - CLI tools (migrate, studio) read the URL from `prisma.config.ts`.
+  - `PrismaClient` at runtime requires a **driver adapter**: `@prisma/adapter-pg` + `pg` installed as dependencies.
+  - Generator `provider = "prisma-client"` outputs TypeScript source to `src/generated/prisma/`.
+  - Entry point is `src/generated/prisma/client.ts` — import as `'../generated/prisma/client'`.
+  - See project-spec.md § 2 for the full note and usage example.
 - **`errorHandler.ts`** uses a runtime duck-type check for Prisma errors instead of `instanceof Prisma.PrismaClientKnownRequestError` — avoids importing the (yet-to-be-generated) client. Will be revisited if needed after Phase 1.
 
 ---
 
-## Phase 1 — Database Schema & Migrations
+## Phase 1 — Database Schema & Migrations ✅
 
 **Goal:** All tables created in PostgreSQL via Prisma.
 
 ### Tasks
 - [x] ~~`npx prisma init`~~ — already done in Phase 0; `prisma/schema.prisma` and `prisma.config.ts` exist
-- [ ] Define all models in `schema.prisma`:
+- [x] Define all models in `schema.prisma`:
   - `User` (id, name, email, password, role, status, isVerified, avatar, timestamps)
   - `Vendor` (id, userId FK, storeName, description, createdAt)
   - `Product` (id, name, description, price, stock, category, image, images[], rating, reviewCount, vendorId FK, timestamps)
@@ -62,26 +65,35 @@
   - `Order` (id, customerId FK, customerName, customerEmail, items Json, status, total, timestamps)
   - `Wishlist` (userId FK, productId FK — composite PK, createdAt)
   - `VerificationCode` (email PK, code, expiresAt)
-- [ ] Define enums: `UserRole`, `UserStatus`, `OrderStatus`, `ProductCategory`
-- [ ] Run `npm run db:migrate -- --name init`
-- [ ] Create `src/lib/prisma.ts` — singleton PrismaClient imported from `../../generated/prisma` (Prisma 7 output path)
-- [ ] Verify: `npm run db:studio` shows all tables
+- [x] Define enums: `UserRole`, `UserStatus`, `OrderStatus` — **`ProductCategory` is a `String` field, not an enum** (Prisma enum identifiers cannot contain `&` or spaces; "Home & Garden" would break it). Zod validates the allowed values at the API layer instead.
+- [x] Run `npm run db:migrate -- --name init` — migration `20260518214419_init` applied
+- [x] Create `src/lib/prisma.ts` — singleton PrismaClient using `PrismaPg` adapter; imported from `../generated/prisma/client`
+- [x] Verify: `prisma migrate status` confirms DB is in sync; `npm run db:studio` opens Prisma Studio successfully
+
+### Deviations & notes
+- **`@prisma/adapter-pg` + `pg` + `@types/pg`** added as dependencies — required by Prisma 7 at runtime (see Phase 0 deviation note).
+- **`ProductCategory` is `String` not enum** — Prisma enum values must be valid identifiers; "Home & Garden" is not. Allowed values (`Electronics`, `Clothing`, `Home & Garden`, `Sports`, `Books`, `Toys`, `Beauty`, `Food`) are enforced by Zod in `products.schema.ts` (Phase 4).
 
 ---
 
-## Phase 2 — Shared Infrastructure
+## Phase 2 — Shared Infrastructure ✅
 
 **Goal:** Auth middleware, error handler, and utility libraries in place before any feature module.
 
 ### Tasks
-- [ ] `src/lib/jwt.ts` — `signToken(payload)` and `verifyToken(token)` helpers
-- [ ] `src/lib/hash.ts` — `hashPassword(plain)` and `comparePassword(plain, hashed)` helpers
-- [ ] `src/lib/email.ts` — `sendVerificationEmail(to, code)` using Nodemailer + Mailtrap config
-- [ ] `src/middleware/authenticate.ts` — verifies `Authorization: Bearer` header, attaches `req.user = { id, role }`; returns `401` if missing/invalid
-- [ ] `src/middleware/requireRole.ts` — factory `requireRole('vendor', 'admin')` → `403` if role not in list
-- [ ] `src/middleware/errorHandler.ts` — catches all unhandled errors, maps Zod/Prisma errors to the spec's `{ message }` shape; Prisma `P2002` (unique violation) → `409`
-- [ ] `src/config/index.ts` — exports typed config object from `process.env`
-- [ ] Write unit tests for `jwt.ts`, `hash.ts`
+- [x] `src/lib/jwt.ts` — `signToken(payload)` and `verifyToken(token)` helpers
+- [x] `src/lib/hash.ts` — `hashPassword(plain)` and `comparePassword(plain, hashed)` helpers
+- [x] `src/lib/email.ts` — `sendVerificationEmail(to, code)` using Nodemailer + Mailtrap config
+- [x] `src/middleware/authenticate.ts` — verifies `Authorization: Bearer` header, attaches `req.user = { id, role }`; returns `401` if missing/invalid; augments `Express.Request` globally
+- [x] `src/middleware/requireRole.ts` — factory `requireRole('vendor', 'admin')` → `403` if role not in list
+- [x] `src/middleware/errorHandler.ts` — updated to use `Prisma.PrismaClientKnownRequestError` from generated client (replaces Phase 0 duck-type check)
+- [x] `src/config/index.ts` — already done in Phase 0
+- [x] Write unit tests for `jwt.ts`, `hash.ts` — **11/11 passing**
+
+### Deviations & notes
+- **`@types/jest`** was missing from original dev deps — added.
+- **`jest.config.ts`** updated: replaced deprecated `globals['ts-jest']` format with the new `transform` array format.
+- **`tsconfig.test.json`** updated: added `"types": ["jest", "node"]` so TypeScript recognises `describe`, `it`, `expect` globals without explicit imports.
 
 ---
 

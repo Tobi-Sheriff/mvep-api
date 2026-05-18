@@ -1,19 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import { ZodError } from 'zod';
+import { Prisma } from '../generated/prisma/client';
 import { AppError } from '../lib/errors';
 import { config } from '../config';
-
-// Prisma error codes — checked by string comparison so we don't need
-// the generated client to be present at this stage.
-function isPrismaError(err: unknown): err is { code: string; name: string } {
-  return (
-    typeof err === 'object' &&
-    err !== null &&
-    'code' in err &&
-    'name' in err &&
-    (err as { name: string }).name === 'PrismaClientKnownRequestError'
-  );
-}
 
 export function errorHandler(
   err: unknown,
@@ -36,7 +25,7 @@ export function errorHandler(
     return;
   }
 
-  if (isPrismaError(err)) {
+  if (err instanceof Prisma.PrismaClientKnownRequestError) {
     if (err.code === 'P2002') {
       res.status(409).json({ message: 'Resource already exists' });
       return;
