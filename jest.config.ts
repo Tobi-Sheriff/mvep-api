@@ -8,6 +8,7 @@ const config: Config = {
   transform: {
     '^.+\\.ts$': ['ts-jest', { tsconfig: './tsconfig.test.json' }],
   },
+  setupFiles: ['<rootDir>/tests/helpers/jestSetup.ts'],
   clearMocks: true,
 };
 
