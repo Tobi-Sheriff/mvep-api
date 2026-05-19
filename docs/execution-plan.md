@@ -266,7 +266,7 @@ GET /api/v1/analytics/products/top
 
 ---
 
-## Phase 8 — Admin Module
+## Phase 8 — Admin Module ✅
 
 **Goal:** All `/admin/*` endpoints for the admin portal.
 
@@ -278,22 +278,30 @@ GET   /api/v1/admin/users/:id
 PATCH /api/v1/admin/users/:id/status
 GET   /api/v1/admin/vendors
 GET   /api/v1/admin/orders
-GET   /api/v1/admin/analytics/platform
+GET   /api/v1/admin/analytics/revenue
 ```
 
 ### Tasks
-- [ ] `src/modules/admin/admin.service.ts`:
-  - `getPlatformStats()` — platform-wide aggregates (all vendors)
-  - `listUsers(filters)` — paginated with role/status/search filters
-  - `getUser(id)` — AdminUser shape
-  - `updateUserStatus(targetId, status, requestingAdminId)` — self-ban guard
-  - `listVendors(filters)` — vendor list with aggregate stats per vendor
-  - `listAllOrders(filters)` — cross-vendor order list
-  - `getPlatformRevenueSeries(period)` — like analytics but unscoped
-- [ ] All routes protected by `requireRole('admin')`
-- [ ] `src/modules/admin/admin.controller.ts`
-- [ ] `src/modules/admin/admin.router.ts`
-- [ ] Integration tests: `tests/admin.test.ts`
+- [x] `src/modules/admin/admin.schema.ts` — Zod schemas for all query/body types
+- [x] `src/modules/admin/admin.service.ts`:
+  - `getPlatformStats()` — 9 platform-wide fields (totalRevenue, totalOrders, totalProducts, totalVendors, totalCustomers, totalUsers, revenueChange, ordersChange, newUsersThisMonth)
+  - `listUsers(filters)` — paginated with role/status/search filters; returns `{ users, total, page, totalPages }`
+  - `getUser(id)` — AdminUser shape; 404 if not found
+  - `updateUserStatus(targetId, body, requestingAdminId)` — self-ban guard (400)
+  - `listVendors(filters)` — vendor list with productCount, totalRevenue, totalOrders per vendor
+  - `listAllOrders(filters)` — cross-vendor; optional vendorId/customerId/status filters
+  - `getPlatformRevenueSeries(period)` — platform-wide revenue series; same shape as analytics but unscoped
+- [x] All routes protected by `requireRole('admin')`
+- [x] `src/modules/admin/admin.controller.ts`
+- [x] `src/modules/admin/admin.router.ts`
+- [x] Mounted: `app.use('/api/v1/admin', adminRouter)`
+- [x] Integration tests: `tests/admin.test.ts` — **28/28 passing**
+- [x] Overall suite: **165/165 passing**
+
+### Deviations & notes
+- **`GET /admin/analytics/revenue`** — the execution plan listed this as `/admin/analytics/platform` but the actual frontend contract uses `/analytics/revenue` under the admin prefix, consistent with the vendor analytics endpoint shape. Named route accordingly.
+- **`OrderItem` interface** extended with `productId` field — needed for the vendorId order filter which cross-references product IDs against order items stored as JSON.
+- **Vendor stats computed in application layer** — same pattern as Phase 7 analytics; fetches all non-cancelled orders then aggregates per vendor in JS.
 
 ---
 

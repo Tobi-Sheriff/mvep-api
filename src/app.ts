@@ -8,6 +8,7 @@ import { productsRouter } from './modules/products/products.router';
 import { ordersRouter } from './modules/orders/orders.router';
 import { usersRouter } from './modules/users/users.router';
 import { analyticsRouter } from './modules/analytics/analytics.router';
+import { adminRouter } from './modules/admin/admin.router';
 
 const app = express();
 
@@ -24,7 +25,7 @@ app.use('/api/v1/products', productsRouter);
 app.use('/api/v1/orders', ordersRouter);
 app.use('/api/v1/users', usersRouter);
 app.use('/api/v1/analytics', analyticsRouter);
-// app.use('/api/v1/admin',     adminRouter);
+app.use('/api/v1/admin', adminRouter);
 
 app.use(errorHandler);
 
