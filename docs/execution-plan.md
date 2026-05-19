@@ -210,7 +210,7 @@ POST  /api/v1/orders
 
 ---
 
-## Phase 6 — Users Module
+## Phase 6 — Users Module ✅
 
 **Goal:** Profile read/update and customer wishlist management.
 
@@ -224,20 +224,21 @@ DELETE /api/v1/users/wishlist/:productId
 ```
 
 ### Tasks
-- [ ] `src/modules/users/users.schema.ts` — Zod schemas
-- [ ] `src/modules/users/users.service.ts`:
+- [x] `src/modules/users/users.schema.ts` — Zod schemas
+- [x] `src/modules/users/users.service.ts`:
   - `getProfile(userId)` — returns `{ id, name, email, role, avatar }`
-  - `updateProfile(userId, data)` — only `name` and `avatar` are mutable here
+  - `updateProfile(userId, data)` — only `name` and `avatar` mutable; email/role/password ignored
   - `getWishlist(userId)` — returns `string[]` of productIds
-  - `addToWishlist(userId, productId)` — idempotent (upsert)
+  - `addToWishlist(userId, productId)` — idempotent upsert; 404 if product not found
   - `removeFromWishlist(userId, productId)` — silent if not present
-- [ ] `src/modules/users/users.controller.ts`
-- [ ] `src/modules/users/users.router.ts`
-- [ ] Integration tests: `tests/users.test.ts`
+- [x] `src/modules/users/users.controller.ts`
+- [x] `src/modules/users/users.router.ts`
+- [x] Integration tests: `tests/users.test.ts` — **17/17 passing**
+- [x] Overall suite: **125/125 passing**
 
 ---
 
-## Phase 7 — Analytics Module
+## Phase 7 — Analytics Module ✅
 
 **Goal:** Vendor-scoped analytics endpoints for the dashboard.
 
@@ -249,14 +250,19 @@ GET /api/v1/analytics/products/top
 ```
 
 ### Tasks
-- [ ] `src/modules/analytics/analytics.service.ts`:
-  - `getOverview(vendorId)` — aggregate revenue, orders, products, unique customers; compute % change vs prior period
-  - `getRevenueSeries(vendorId, period)` — group-by-day revenue + order count for the period window; returns `{ data, total, change }`
-  - `getTopProducts(vendorId)` — top 5 products by summed `unitPrice × quantity` across all orders
-- [ ] Period math helper: given `'7d'`, return `{ start, end, prevStart, prevEnd }` for comparison
-- [ ] `src/modules/analytics/analytics.controller.ts`
-- [ ] `src/modules/analytics/analytics.router.ts`
-- [ ] Integration tests: `tests/analytics.test.ts`
+- [x] `src/modules/analytics/analytics.service.ts`:
+  - `getOverview(userId)` — aggregate revenue, orders, products, unique customers; % change vs prior 30d
+  - `getRevenueSeries(userId, period)` — group-by-day revenue + order count; returns `{ data, total, change }`
+  - `getTopProducts(userId)` — top 5 products by summed `unitPrice × quantity` (non-cancelled orders)
+- [x] `getPeriodBounds(period)` helper — returns `{ start, end, prevStart, prevEnd }` for comparison
+- [x] `src/modules/analytics/analytics.controller.ts`
+- [x] `src/modules/analytics/analytics.router.ts`
+- [x] Integration tests: `tests/analytics.test.ts` — **12/12 passing**
+- [x] Overall suite: **137/137 passing**
+
+### Deviations & notes
+- **Analytics computed in application layer**: Orders are fetched and filtered in JS rather than using SQL aggregates. Acceptable for v1; can be replaced with `$queryRaw` aggregations if performance becomes an issue.
+- **Cancelled orders excluded** from all revenue/order aggregations.
 
 ---
 

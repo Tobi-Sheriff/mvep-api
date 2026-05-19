@@ -6,6 +6,8 @@ import { errorHandler } from './middleware/errorHandler';
 import { authRouter } from './modules/auth/auth.router';
 import { productsRouter } from './modules/products/products.router';
 import { ordersRouter } from './modules/orders/orders.router';
+import { usersRouter } from './modules/users/users.router';
+import { analyticsRouter } from './modules/analytics/analytics.router';
 
 const app = express();
 
@@ -20,8 +22,8 @@ app.get('/', (_req, res) => {
 app.use('/api/v1/auth', authRouter);
 app.use('/api/v1/products', productsRouter);
 app.use('/api/v1/orders', ordersRouter);
-// app.use('/api/v1/users',     usersRouter);
-// app.use('/api/v1/analytics', analyticsRouter);
+app.use('/api/v1/users', usersRouter);
+app.use('/api/v1/analytics', analyticsRouter);
 // app.use('/api/v1/admin',     adminRouter);
 
 app.use(errorHandler);
