@@ -14,7 +14,10 @@ export async function clearDatabase(): Promise<void> {
   );
 }
 
-export async function createTestUser(role: 'customer' | 'vendor' | 'admin') {
+export async function createTestUser(
+  role: 'customer' | 'vendor' | 'admin',
+  opts: { withVendorProfile?: boolean } = {},
+) {
   const email = `${randomUUID()}@test.com`;
   const password = await hashPassword(TEST_PASSWORD);
 
@@ -29,7 +32,7 @@ export async function createTestUser(role: 'customer' | 'vendor' | 'admin') {
     },
   });
 
-  if (role === 'vendor') {
+  if (role === 'vendor' || opts.withVendorProfile) {
     await prisma.vendor.create({
       data: {
         userId: user.id,

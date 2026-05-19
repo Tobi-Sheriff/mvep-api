@@ -138,7 +138,7 @@ GET  /api/v1/auth/me
 
 ---
 
-## Phase 4 — Products Module
+## Phase 4 — Products Module ✅
 
 **Goal:** Full product CRUD with vendor ownership and two response shapes.
 
@@ -153,20 +153,25 @@ DELETE /api/v1/products/:id
 ```
 
 ### Tasks
-- [ ] `src/modules/products/products.schema.ts` — Zod schemas
-- [ ] `src/modules/products/products.service.ts`:
+- [x] `src/modules/products/products.schema.ts` — Zod schemas
+- [x] `src/modules/products/products.service.ts`:
   - `listProducts(filters)` — paginate, filter (search, category, price, rating, sort), return `CustomerProduct[]` shape
   - `getProduct(id)` — return `CustomerProduct` with vendorName join
   - `getProductReviews(id)` — return `Review[]`
-  - `createProduct(data, vendorId)` — return `Product` (vendor shape)
+  - `createProduct(data, requestingUser)` — vendor lookup from userId; return `Product` (vendor shape)
   - `updateProduct(id, data, requestingUser)` — ownership check
   - `deleteProduct(id, requestingUser)` — ownership check
-- [ ] `src/modules/products/products.controller.ts`
-- [ ] `src/modules/products/products.router.ts`
-- [ ] Two response shape mappers:
-  - `toCustomerProduct(product, vendor)` — includes `images[]`, `rating`, `reviewCount`, `vendorName`
-  - `toVendorProduct(product)` — includes `image` (primary), no rating/reviews
-- [ ] Integration tests: `tests/products.test.ts`
+- [x] `src/modules/products/products.controller.ts`
+- [x] `src/modules/products/products.router.ts`
+- [x] Two response shape mappers inline in service
+- [x] Integration tests: `tests/products.test.ts` — **30/30 passing**
+
+### Deviations & notes
+- **Admin product creation requires a vendor profile**: Contract says `vendorId` is derived from the authenticated user's vendor profile. Admin users don't automatically have vendor profiles; tests create one explicitly via `createTestUser('admin', { withVendorProfile: true })`.
+- **`tests/helpers/testSetup.ts`** updated: `createTestUser` accepts `opts.withVendorProfile` to create a vendor profile for non-vendor roles.
+- **`jest.config.ts`** updated: added `maxWorkers: 1` to run test suites serially. Without this, `auth.test.ts`'s `beforeEach(clearDatabase)` races with `products.test.ts`'s `beforeAll` seeding on the shared test DB.
+- **Prisma `where` cast**: The dynamic `where` object is cast to `never` when passed to Prisma's `findMany`/`count`. Prisma's generated client types don't directly accept `Record<string, unknown>`; the cast works correctly at runtime.
+- **`GET /:id/reviews` is before `GET /:id`** in the router to avoid any potential shadowing (though Express distinguishes by path depth regardless).
 
 ---
 

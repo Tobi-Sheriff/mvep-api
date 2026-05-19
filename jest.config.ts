@@ -10,6 +10,7 @@ const config: Config = {
   },
   setupFiles: ['<rootDir>/tests/helpers/jestSetup.ts'],
   clearMocks: true,
+  maxWorkers: 1,
 };
 
 export default config;
