@@ -175,7 +175,7 @@ DELETE /api/v1/products/:id
 
 ---
 
-## Phase 5 — Orders Module
+## Phase 5 — Orders Module ✅
 
 **Goal:** Place orders with stock decrement; list/get orders with role-based scoping; status transitions.
 
@@ -189,24 +189,24 @@ POST  /api/v1/orders
 ```
 
 ### Tasks
-- [ ] `src/modules/orders/orders.schema.ts` — Zod schemas
-- [ ] `src/modules/orders/orders.service.ts`:
-  - `createOrder(items, customer, shippingAddress?, paymentMethod?)` — Prisma transaction: look up product prices/names from DB, calculate total server-side, validate stock, decrement stock, create Order; reject `409` if insufficient stock
+- [x] `src/modules/orders/orders.schema.ts` — Zod schemas
+- [x] `src/modules/orders/orders.service.ts`:
+  - `createOrder(body, customer)` — validates stock up-front, then atomic Prisma transaction: decrement stock + create order; rejects `409` on insufficient stock
   - `listOrders(filters)` — vendor/admin only; paginated
   - `listMyOrders(customerId, filters)` — customer only; scoped to their own orders
   - `getOrder(id, requestingUser)` — 403 if customer accessing another user's order
-  - `updateOrderStatus(id, newStatus, requestingUser)` — validate transition table
-- [ ] Status transition guard:
-  ```
-  pending     → processing, cancelled
-  processing  → shipped, cancelled
-  shipped     → delivered
-  delivered   → (terminal)
-  cancelled   → (terminal)
-  ```
-- [ ] `src/modules/orders/orders.controller.ts`
-- [ ] `src/modules/orders/orders.router.ts`
-- [ ] Integration tests: `tests/orders.test.ts`
+  - `updateOrderStatus(id, body, requestingUser)` — validates transition table
+- [x] Status transition guard (`isValidTransition`) — exported for unit tests
+- [x] `src/modules/orders/orders.controller.ts`
+- [x] `src/modules/orders/orders.router.ts`
+- [x] `tests/unit/orderTransitions.test.ts` — 11 unit tests for all valid/invalid transitions
+- [x] Integration tests: `tests/orders.test.ts` — **28/28 passing**
+- [x] Overall suite: **108/108 passing**
+
+### Deviations & notes
+- **Stock validation is pre-flight, not inside the transaction**: All products are checked before any mutation begins. This avoids partial DB state if an error occurs before the transaction commits, and gives a clean 404/409 response before touching the DB. The transaction itself just decrements + creates (no rollback logic needed).
+- **Test 21 (shipped → pending)**: The Zod schema for `updateOrderStatusBody` only accepts `processing|shipped|delivered|cancelled` — `pending` is rejected by Zod at the controller layer (400 validation error), not by the transition guard. The test still gets 400 as specified.
+- **`GET /orders/my` and `GET /orders` routes** defined before `GET /:id` to prevent the `/my` literal path from matching `/:id`.
 
 ---
 

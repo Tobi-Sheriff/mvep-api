@@ -1,0 +1,420 @@
+import request from 'supertest';
+import { app } from '../src/app';
+import { prisma, clearDatabase, createTestUser } from './helpers/testSetup';
+
+// ─── Setup ────────────────────────────────────────────────────────────────────
+
+let customerToken: string;
+let customerId: string;
+let vendorToken: string;
+let vendorId: string;
+let productId: string;
+
+beforeAll(async () => {
+  await clearDatabase();
+
+  const customer = await createTestUser('customer');
+  const vendor = await createTestUser('vendor');
+
+  customerToken = customer.token;
+  customerId = customer.user.id;
+  vendorToken = vendor.token;
+
+  const vendorRecord = await prisma.vendor.findUniqueOrThrow({
+    where: { userId: vendor.user.id },
+  });
+  vendorId = vendorRecord.id;
+
+  const product = await prisma.product.create({
+    data: {
+      name: 'Test Widget',
+      description: 'A test product',
+      price: 25.00,
+      stock: 100,
+      category: 'Electronics',
+      image: 'widget.jpg',
+      images: ['widget.jpg'],
+      vendorId,
+    },
+  });
+  productId = product.id;
+});
+
+afterAll(async () => {
+  await clearDatabase();
+  await prisma.$disconnect();
+});
+
+// ─── POST /api/v1/orders ──────────────────────────────────────────────────────
+
+describe('POST /api/v1/orders', () => {
+  it('1: happy path — returns 201 Order', async () => {
+    const res = await request(app)
+      .post('/api/v1/orders')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({ items: [{ productId, quantity: 2 }] });
+    expect(res.status).toBe(201);
+    expect(res.body.id).toBeDefined();
+    expect(res.body.status).toBe('pending');
+    expect(res.body.customerId).toBe(customerId);
+    expect(res.body).toHaveProperty('items');
+    expect(res.body).toHaveProperty('total');
+    expect(res.body).toHaveProperty('createdAt');
+  });
+
+  it('2: total is calculated server-side', async () => {
+    const res = await request(app)
+      .post('/api/v1/orders')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({ items: [{ productId, quantity: 3 }] });
+    expect(res.status).toBe(201);
+    expect(res.body.total).toBeCloseTo(75.0, 2);
+  });
+
+  it('3: items have productName and unitPrice from DB', async () => {
+    const res = await request(app)
+      .post('/api/v1/orders')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({ items: [{ productId, quantity: 1 }] });
+    expect(res.status).toBe(201);
+    const item = res.body.items[0];
+    expect(item.productName).toBe('Test Widget');
+    expect(item.unitPrice).toBeCloseTo(25.0, 2);
+    expect(item.quantity).toBe(1);
+  });
+
+  it('4: insufficient stock → 409', async () => {
+    const scarceProduct = await prisma.product.create({
+      data: {
+        name: 'Scarce Item',
+        description: 'Very limited',
+        price: 10.00,
+        stock: 2,
+        category: 'Electronics',
+        image: 'scarce.jpg',
+        images: ['scarce.jpg'],
+        vendorId,
+      },
+    });
+    const res = await request(app)
+      .post('/api/v1/orders')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({ items: [{ productId: scarceProduct.id, quantity: 999 }] });
+    expect(res.status).toBe(409);
+    expect(res.body.message).toMatch(/insufficient stock/i);
+  });
+
+  it('5: multiple items — one fails stock → 409, nothing decremented', async () => {
+    const limitedProduct = await prisma.product.create({
+      data: {
+        name: 'Limited Item',
+        description: 'Limited stock',
+        price: 15.00,
+        stock: 1,
+        category: 'Electronics',
+        image: 'limited.jpg',
+        images: ['limited.jpg'],
+        vendorId,
+      },
+    });
+    const stockBefore = (await prisma.product.findUniqueOrThrow({ where: { id: productId } }))
+      .stock;
+
+    const res = await request(app)
+      .post('/api/v1/orders')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({
+        items: [
+          { productId, quantity: 1 },
+          { productId: limitedProduct.id, quantity: 999 },
+        ],
+      });
+    expect(res.status).toBe(409);
+
+    // Stock of the first product must be unchanged
+    const stockAfter = (await prisma.product.findUniqueOrThrow({ where: { id: productId } }))
+      .stock;
+    expect(stockAfter).toBe(Number(stockBefore));
+  });
+
+  it('6: vendor token → 403', async () => {
+    const res = await request(app)
+      .post('/api/v1/orders')
+      .set('Authorization', `Bearer ${vendorToken}`)
+      .send({ items: [{ productId, quantity: 1 }] });
+    expect(res.status).toBe(403);
+  });
+
+  it('7: unknown productId → 404', async () => {
+    const res = await request(app)
+      .post('/api/v1/orders')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({ items: [{ productId: 'nonexistent-id', quantity: 1 }] });
+    expect(res.status).toBe(404);
+    expect(res.body.message).toMatch(/product not found/i);
+  });
+
+  it('8: with shippingAddress → 201', async () => {
+    const res = await request(app)
+      .post('/api/v1/orders')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({
+        items: [{ productId, quantity: 1 }],
+        shippingAddress: { line1: '123 Main St', city: 'Lagos', state: 'LA', postcode: '100001', country: 'NG' },
+      });
+    expect(res.status).toBe(201);
+  });
+
+  it('9: with paymentMethod → 201', async () => {
+    const res = await request(app)
+      .post('/api/v1/orders')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({ items: [{ productId, quantity: 1 }], paymentMethod: 'card' });
+    expect(res.status).toBe(201);
+  });
+});
+
+// ─── GET /api/v1/orders (vendor/admin) ────────────────────────────────────────
+
+describe('GET /api/v1/orders', () => {
+  it('10: vendor sees all orders', async () => {
+    const res = await request(app)
+      .get('/api/v1/orders')
+      .set('Authorization', `Bearer ${vendorToken}`);
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.orders)).toBe(true);
+    expect(typeof res.body.total).toBe('number');
+  });
+
+  it('11: customer blocked → 403', async () => {
+    const res = await request(app)
+      .get('/api/v1/orders')
+      .set('Authorization', `Bearer ${customerToken}`);
+    expect(res.status).toBe(403);
+  });
+
+  it('12: filter by status', async () => {
+    const res = await request(app)
+      .get('/api/v1/orders?status=pending')
+      .set('Authorization', `Bearer ${vendorToken}`);
+    expect(res.status).toBe(200);
+    for (const order of res.body.orders) {
+      expect(order.status).toBe('pending');
+    }
+  });
+
+  it('13: pagination respected', async () => {
+    const res = await request(app)
+      .get('/api/v1/orders?page=1&limit=2')
+      .set('Authorization', `Bearer ${vendorToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.orders.length).toBeLessThanOrEqual(2);
+  });
+});
+
+// ─── GET /api/v1/orders/my (customer) ─────────────────────────────────────────
+
+describe('GET /api/v1/orders/my', () => {
+  it('14: customer gets only their own orders', async () => {
+    const res = await request(app)
+      .get('/api/v1/orders/my')
+      .set('Authorization', `Bearer ${customerToken}`);
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.orders)).toBe(true);
+    for (const order of res.body.orders) {
+      expect(order.customerId).toBe(customerId);
+    }
+  });
+
+  it('15: vendor blocked → 403', async () => {
+    const res = await request(app)
+      .get('/api/v1/orders/my')
+      .set('Authorization', `Bearer ${vendorToken}`);
+    expect(res.status).toBe(403);
+  });
+
+  it('16: filter by status scoped to customer', async () => {
+    const res = await request(app)
+      .get('/api/v1/orders/my?status=pending')
+      .set('Authorization', `Bearer ${customerToken}`);
+    expect(res.status).toBe(200);
+    for (const order of res.body.orders) {
+      expect(order.status).toBe('pending');
+      expect(order.customerId).toBe(customerId);
+    }
+  });
+});
+
+// ─── GET /api/v1/orders/:id ───────────────────────────────────────────────────
+
+describe('GET /api/v1/orders/:id', () => {
+  let ownOrderId: string;
+  let otherOrderId: string;
+
+  beforeAll(async () => {
+    const otherCustomer = await createTestUser('customer');
+
+    const [own, other] = await Promise.all([
+      prisma.order.create({
+        data: {
+          customerId,
+          customerName: 'Test Customer',
+          customerEmail: 'c@test.com',
+          items: [{ productId, productName: 'Test Widget', quantity: 1, unitPrice: 25 }] as never,
+          total: 25,
+          status: 'pending',
+        },
+      }),
+      prisma.order.create({
+        data: {
+          customerId: otherCustomer.user.id,
+          customerName: 'Other Customer',
+          customerEmail: 'o@test.com',
+          items: [] as never,
+          total: 0,
+          status: 'pending',
+        },
+      }),
+    ]);
+
+    ownOrderId = own.id;
+    otherOrderId = other.id;
+  });
+
+  it('12: customer fetches own order → 200', async () => {
+    const res = await request(app)
+      .get(`/api/v1/orders/${ownOrderId}`)
+      .set('Authorization', `Bearer ${customerToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.id).toBe(ownOrderId);
+  });
+
+  it("13: customer fetches another's order → 403", async () => {
+    const res = await request(app)
+      .get(`/api/v1/orders/${otherOrderId}`)
+      .set('Authorization', `Bearer ${customerToken}`);
+    expect(res.status).toBe(403);
+  });
+
+  it('14: vendor fetches any order → 200', async () => {
+    const res = await request(app)
+      .get(`/api/v1/orders/${otherOrderId}`)
+      .set('Authorization', `Bearer ${vendorToken}`);
+    expect(res.status).toBe(200);
+  });
+
+  it('15: unknown order → 404', async () => {
+    const res = await request(app)
+      .get('/api/v1/orders/nonexistent-id')
+      .set('Authorization', `Bearer ${vendorToken}`);
+    expect(res.status).toBe(404);
+  });
+});
+
+// ─── PATCH /api/v1/orders/:id/status ─────────────────────────────────────────
+
+describe('PATCH /api/v1/orders/:id/status', () => {
+  async function createPendingOrder() {
+    return prisma.order.create({
+      data: {
+        customerId,
+        customerName: 'Test Customer',
+        customerEmail: 'c@test.com',
+        items: [] as never,
+        total: 0,
+        status: 'pending',
+      },
+    });
+  }
+
+  it('16: pending → processing', async () => {
+    const order = await createPendingOrder();
+    const res = await request(app)
+      .patch(`/api/v1/orders/${order.id}/status`)
+      .set('Authorization', `Bearer ${vendorToken}`)
+      .send({ status: 'processing' });
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('processing');
+  });
+
+  it('17: processing → shipped', async () => {
+    const order = await prisma.order.create({
+      data: { customerId, customerName: 'C', customerEmail: 'c@t.com', items: [] as never, total: 0, status: 'processing' },
+    });
+    const res = await request(app)
+      .patch(`/api/v1/orders/${order.id}/status`)
+      .set('Authorization', `Bearer ${vendorToken}`)
+      .send({ status: 'shipped' });
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('shipped');
+  });
+
+  it('18: shipped → delivered', async () => {
+    const order = await prisma.order.create({
+      data: { customerId, customerName: 'C', customerEmail: 'c@t.com', items: [] as never, total: 0, status: 'shipped' },
+    });
+    const res = await request(app)
+      .patch(`/api/v1/orders/${order.id}/status`)
+      .set('Authorization', `Bearer ${vendorToken}`)
+      .send({ status: 'delivered' });
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('delivered');
+  });
+
+  it('19: pending → cancelled', async () => {
+    const order = await createPendingOrder();
+    const res = await request(app)
+      .patch(`/api/v1/orders/${order.id}/status`)
+      .set('Authorization', `Bearer ${vendorToken}`)
+      .send({ status: 'cancelled' });
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('cancelled');
+  });
+
+  it('20: processing → cancelled', async () => {
+    const order = await prisma.order.create({
+      data: { customerId, customerName: 'C', customerEmail: 'c@t.com', items: [] as never, total: 0, status: 'processing' },
+    });
+    const res = await request(app)
+      .patch(`/api/v1/orders/${order.id}/status`)
+      .set('Authorization', `Bearer ${vendorToken}`)
+      .send({ status: 'cancelled' });
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('cancelled');
+  });
+
+  it('21: shipped → pending (invalid backward) → 400', async () => {
+    const order = await prisma.order.create({
+      data: { customerId, customerName: 'C', customerEmail: 'c@t.com', items: [] as never, total: 0, status: 'shipped' },
+    });
+    const res = await request(app)
+      .patch(`/api/v1/orders/${order.id}/status`)
+      .set('Authorization', `Bearer ${vendorToken}`)
+      .send({ status: 'pending' });
+    expect(res.status).toBe(400);
+
+    // 'pending' is not in the schema enum, so Zod catches it → 400 with errors
+    // That's fine — the result is still 400
+  });
+
+  it('22: delivered → cancelled (terminal) → 400', async () => {
+    const order = await prisma.order.create({
+      data: { customerId, customerName: 'C', customerEmail: 'c@t.com', items: [] as never, total: 0, status: 'delivered' },
+    });
+    const res = await request(app)
+      .patch(`/api/v1/orders/${order.id}/status`)
+      .set('Authorization', `Bearer ${vendorToken}`)
+      .send({ status: 'cancelled' });
+    expect(res.status).toBe(400);
+    expect(res.body.message).toMatch(/invalid status transition/i);
+  });
+
+  it('23: customer token → 403', async () => {
+    const order = await createPendingOrder();
+    const res = await request(app)
+      .patch(`/api/v1/orders/${order.id}/status`)
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({ status: 'processing' });
+    expect(res.status).toBe(403);
+  });
+});
