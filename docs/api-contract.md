@@ -499,7 +499,7 @@ Query: `status`, `vendorId`, `customerId`, `page`, `limit`
 { "orders": [Order], "total": 0 }
 ```
 
-### GET `/admin/analytics/platform`
+### GET `/admin/analytics/revenue`
 Query: `period=7d|30d|90d|1y`
 ```json
 // Response 200 — same shape as /analytics/revenue but unscoped (all vendors)
