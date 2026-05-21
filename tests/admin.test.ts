@@ -234,12 +234,23 @@ describe('PATCH /api/v1/admin/users/:id/status', () => {
       .send({ status: 'banned' });
     expect(res.status).toBe(404);
   });
+
+  it('17: admin cannot change another admin\'s status → 403', async () => {
+    // Create a second admin to target
+    const secondAdmin = await createTestUser('admin');
+    const res = await request(app)
+      .patch(`/api/v1/admin/users/${secondAdmin.user.id}/status`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ status: 'suspended' });
+    expect(res.status).toBe(403);
+    expect(res.body.message).toMatch(/developer CLI/i);
+  });
 });
 
 // ─── GET /api/v1/admin/vendors ───────────────────────────────────────────────
 
 describe('GET /api/v1/admin/vendors', () => {
-  it('17: admin → 200 with vendors array and stats', async () => {
+  it('18: admin → 200 with vendors array and stats', async () => {
     const res = await request(app)
       .get('/api/v1/admin/vendors')
       .set('Authorization', `Bearer ${adminToken}`);
@@ -255,7 +266,7 @@ describe('GET /api/v1/admin/vendors', () => {
     }
   });
 
-  it('18: vendor revenue computed from non-cancelled orders', async () => {
+  it('19: vendor revenue computed from non-cancelled orders', async () => {
     const res = await request(app)
       .get('/api/v1/admin/vendors')
       .set('Authorization', `Bearer ${adminToken}`);
@@ -267,7 +278,7 @@ describe('GET /api/v1/admin/vendors', () => {
     expect(v.totalOrders).toBe(1);
   });
 
-  it('19: non-admin → 403', async () => {
+  it('20: non-admin → 403', async () => {
     const res = await request(app)
       .get('/api/v1/admin/vendors')
       .set('Authorization', `Bearer ${vendorToken}`);
@@ -278,7 +289,7 @@ describe('GET /api/v1/admin/vendors', () => {
 // ─── GET /api/v1/admin/orders ────────────────────────────────────────────────
 
 describe('GET /api/v1/admin/orders', () => {
-  it('20: admin → 200 with orders array and total', async () => {
+  it('21: admin → 200 with orders array and total', async () => {
     const res = await request(app)
       .get('/api/v1/admin/orders')
       .set('Authorization', `Bearer ${adminToken}`);
@@ -287,7 +298,7 @@ describe('GET /api/v1/admin/orders', () => {
     expect(typeof res.body.total).toBe('number');
   });
 
-  it('21: filter by status=delivered returns only delivered orders', async () => {
+  it('22: filter by status=delivered returns only delivered orders', async () => {
     const res = await request(app)
       .get('/api/v1/admin/orders?status=delivered')
       .set('Authorization', `Bearer ${adminToken}`);
@@ -297,7 +308,7 @@ describe('GET /api/v1/admin/orders', () => {
     }
   });
 
-  it('22: filter by customerId returns that customer\'s orders', async () => {
+  it('23: filter by customerId returns that customer\'s orders', async () => {
     const res = await request(app)
       .get(`/api/v1/admin/orders?customerId=${customerId}`)
       .set('Authorization', `Bearer ${adminToken}`);
@@ -307,7 +318,7 @@ describe('GET /api/v1/admin/orders', () => {
     }
   });
 
-  it('23: filter by vendorId returns orders containing that vendor\'s products', async () => {
+  it('24: filter by vendorId returns orders containing that vendor\'s products', async () => {
     const res = await request(app)
       .get(`/api/v1/admin/orders?vendorId=${vendorId}`)
       .set('Authorization', `Bearer ${adminToken}`);
@@ -315,7 +326,7 @@ describe('GET /api/v1/admin/orders', () => {
     expect(res.body.orders.length).toBeGreaterThan(0);
   });
 
-  it('24: non-admin → 403', async () => {
+  it('25: non-admin → 403', async () => {
     const res = await request(app)
       .get('/api/v1/admin/orders')
       .set('Authorization', `Bearer ${vendorToken}`);
@@ -326,7 +337,7 @@ describe('GET /api/v1/admin/orders', () => {
 // ─── GET /api/v1/admin/analytics/revenue ─────────────────────────────────────
 
 describe('GET /api/v1/admin/analytics/revenue', () => {
-  it('25: period=30d → 200 { data, total, change }', async () => {
+  it('26: period=30d → 200 { data, total, change }', async () => {
     const res = await request(app)
       .get('/api/v1/admin/analytics/revenue?period=30d')
       .set('Authorization', `Bearer ${adminToken}`);
@@ -336,7 +347,7 @@ describe('GET /api/v1/admin/analytics/revenue', () => {
     expect(typeof res.body.change).toBe('number');
   });
 
-  it('26: data points have date, revenue, orders fields', async () => {
+  it('27: data points have date, revenue, orders fields', async () => {
     const res = await request(app)
       .get('/api/v1/admin/analytics/revenue?period=30d')
       .set('Authorization', `Bearer ${adminToken}`);
@@ -349,14 +360,14 @@ describe('GET /api/v1/admin/analytics/revenue', () => {
     }
   });
 
-  it('27: invalid period → 400', async () => {
+  it('28: invalid period → 400', async () => {
     const res = await request(app)
       .get('/api/v1/admin/analytics/revenue?period=3d')
       .set('Authorization', `Bearer ${adminToken}`);
     expect(res.status).toBe(400);
   });
 
-  it('28: non-admin → 403', async () => {
+  it('29: non-admin → 403', async () => {
     const res = await request(app)
       .get('/api/v1/admin/analytics/revenue?period=7d')
       .set('Authorization', `Bearer ${vendorToken}`);

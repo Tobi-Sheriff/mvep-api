@@ -1,5 +1,5 @@
 import { prisma } from '../../lib/prisma';
-import { BadRequestError, NotFoundError } from '../../lib/errors';
+import { BadRequestError, ForbiddenError, NotFoundError } from '../../lib/errors';
 import type {
   ListUsersQuery,
   UpdateUserStatusBody,
@@ -180,6 +180,10 @@ export async function updateUserStatus(
 
   const user = await prisma.user.findUnique({ where: { id: targetId } });
   if (!user) throw new NotFoundError('User not found');
+
+  if (user.role === 'admin') {
+    throw new ForbiddenError('Admin accounts can only be managed via the developer CLI');
+  }
 
   const updated = await prisma.user.update({
     where: { id: targetId },

@@ -408,6 +408,80 @@ const ORDERS: OrderSeed[] = [
   },
 ];
 
+// ─── Reviews ─────────────────────────────────────────────────────────────────
+// 3 reviews per product (one per seeded user). Rating averages drive product.rating.
+
+type ReviewSeed = {
+  productId: string;
+  userId: string;
+  userName: string;
+  rating: number;
+  comment: string;
+};
+
+const REVIEWS: ReviewSeed[] = [
+  // p1 iPhone 15 Pro  → avg 4.67
+  { productId: 'p1', userId: '1', userName: 'Alice Customer', rating: 5, comment: 'Incredible phone, the camera is unreal.' },
+  { productId: 'p1', userId: '2', userName: 'Bob Vendor', rating: 5, comment: 'Best iPhone yet, customers love it.' },
+  { productId: 'p1', userId: '3', userName: 'Carol Admin', rating: 4, comment: 'Great device, just a bit pricey.' },
+  // p2 MacBook Pro  → avg 4.67
+  { productId: 'p2', userId: '1', userName: 'Alice Customer', rating: 5, comment: 'Battery life is genuinely 18 hours.' },
+  { productId: 'p2', userId: '2', userName: 'Bob Vendor', rating: 5, comment: 'Top seller in our store every month.' },
+  { productId: 'p2', userId: '3', userName: 'Carol Admin', rating: 4, comment: 'Fast and reliable, expensive but worth it.' },
+  // p3 Nike T-Shirt  → avg 4.33
+  { productId: 'p3', userId: '1', userName: 'Alice Customer', rating: 4, comment: 'Super comfortable for workouts.' },
+  { productId: 'p3', userId: '2', userName: 'Bob Vendor', rating: 5, comment: 'Great quality, re-orders frequently.' },
+  { productId: 'p3', userId: '3', userName: 'Carol Admin', rating: 4, comment: 'Good fit, washes well.' },
+  // p4 Levi's Jeans  → avg 4.33
+  { productId: 'p4', userId: '1', userName: 'Alice Customer', rating: 4, comment: 'Classic cut, very durable.' },
+  { productId: 'p4', userId: '2', userName: 'Bob Vendor', rating: 4, comment: 'Timeless style, steady seller.' },
+  { productId: 'p4', userId: '3', userName: 'Carol Admin', rating: 5, comment: 'Perfect fit, exactly as described.' },
+  // p5 Espresso Machine  → avg 4.67
+  { productId: 'p5', userId: '1', userName: 'Alice Customer', rating: 5, comment: 'Makes coffee shop quality espresso at home.' },
+  { productId: 'p5', userId: '2', userName: 'Bob Vendor', rating: 5, comment: 'Premium build, customers are very happy.' },
+  { productId: 'p5', userId: '3', userName: 'Carol Admin', rating: 4, comment: 'Great machine, takes time to dial in.' },
+  // p6 Ceramic Planter  → avg 4.00
+  { productId: 'p6', userId: '1', userName: 'Alice Customer', rating: 4, comment: 'Beautiful pots, perfect drainage holes.' },
+  { productId: 'p6', userId: '2', userName: 'Bob Vendor', rating: 4, comment: 'Nice hand-painted finish, popular gift.' },
+  { productId: 'p6', userId: '3', userName: 'Carol Admin', rating: 4, comment: 'Exactly as pictured, solid quality.' },
+  // p7 Asics Shoes  → avg 4.67
+  { productId: 'p7', userId: '1', userName: 'Alice Customer', rating: 5, comment: 'Ran a marathon in these, zero blisters.' },
+  { productId: 'p7', userId: '2', userName: 'Bob Vendor', rating: 4, comment: 'Consistent best-seller in sports.' },
+  { productId: 'p7', userId: '3', userName: 'Carol Admin', rating: 5, comment: 'Best running shoe I have owned.' },
+  // p8 Yoga Mat  → avg 4.67
+  { productId: 'p8', userId: '1', userName: 'Alice Customer', rating: 5, comment: 'Non-slip grip even in hot yoga.' },
+  { productId: 'p8', userId: '2', userName: 'Bob Vendor', rating: 5, comment: 'Eco materials, customers appreciate that.' },
+  { productId: 'p8', userId: '3', userName: 'Carol Admin', rating: 4, comment: 'Great mat, a little heavy to carry.' },
+  // p9 TypeScript Deep Dive  → avg 5.00
+  { productId: 'p9', userId: '1', userName: 'Alice Customer', rating: 5, comment: 'Took me from beginner to confident in weeks.' },
+  { productId: 'p9', userId: '2', userName: 'Bob Vendor', rating: 5, comment: 'Every dev we know has bought this.' },
+  { productId: 'p9', userId: '3', userName: 'Carol Admin', rating: 5, comment: 'Essential reading. Buy it.' },
+  // p10 Clean Code  → avg 4.67
+  { productId: 'p10', userId: '1', userName: 'Alice Customer', rating: 5, comment: 'Changed how I write code permanently.' },
+  { productId: 'p10', userId: '2', userName: 'Bob Vendor', rating: 4, comment: 'Classic engineering book, always in stock.' },
+  { productId: 'p10', userId: '3', userName: 'Carol Admin', rating: 5, comment: 'Mandatory for every developer.' },
+  // p11 LEGO Car  → avg 4.67
+  { productId: 'p11', userId: '1', userName: 'Alice Customer', rating: 5, comment: 'My son spent a whole weekend building this.' },
+  { productId: 'p11', userId: '2', userName: 'Bob Vendor', rating: 5, comment: 'Incredible detail, popular with adults too.' },
+  { productId: 'p11', userId: '3', userName: 'Carol Admin', rating: 4, comment: 'Great set, instructions are very clear.' },
+  // p12 Catan  → avg 4.67
+  { productId: 'p12', userId: '1', userName: 'Alice Customer', rating: 5, comment: 'Still our go-to game night staple.' },
+  { productId: 'p12', userId: '2', userName: 'Bob Vendor', rating: 4, comment: 'Gateway game that everyone loves.' },
+  { productId: 'p12', userId: '3', userName: 'Carol Admin', rating: 5, comment: 'Endless replayability, worth every penny.' },
+  // p13 CeraVe  → avg 4.67
+  { productId: 'p13', userId: '1', userName: 'Alice Customer', rating: 5, comment: 'Cleared my dry skin in two weeks.' },
+  { productId: 'p13', userId: '2', userName: 'Bob Vendor', rating: 4, comment: 'Dermatologist recommended, high repurchase rate.' },
+  { productId: 'p13', userId: '3', userName: 'Carol Admin', rating: 5, comment: 'Fragrance-free and gentle, love it.' },
+  // p14 OGX Shampoo  → avg 4.33
+  { productId: 'p14', userId: '1', userName: 'Alice Customer', rating: 4, comment: 'Hair feels noticeably softer.' },
+  { productId: 'p14', userId: '2', userName: 'Bob Vendor', rating: 4, comment: 'Pleasant scent and good lather.' },
+  { productId: 'p14', userId: '3', userName: 'Carol Admin', rating: 5, comment: 'Best affordable shampoo I have tried.' },
+  // p15 Ethiopian Coffee  → avg 4.67
+  { productId: 'p15', userId: '1', userName: 'Alice Customer', rating: 5, comment: 'The blueberry notes are incredible.' },
+  { productId: 'p15', userId: '2', userName: 'Bob Vendor', rating: 4, comment: 'Single-origin quality at a fair price.' },
+  { productId: 'p15', userId: '3', userName: 'Carol Admin', rating: 5, comment: 'Best morning coffee I have had.' },
+];
+
 // ─── Wishlist ─────────────────────────────────────────────────────────────────
 
 const WISHLIST = [
@@ -454,6 +528,29 @@ async function main() {
     });
   }
   console.log('  ✓ Products (15)');
+
+  // Reviews — delete and re-insert so re-running seed stays idempotent
+  await prisma.review.deleteMany({});
+  await prisma.review.createMany({ data: REVIEWS });
+
+  // Recompute each product's rating and reviewCount from actual review data
+  for (const p of PRODUCTS) {
+    const reviews = await prisma.review.findMany({
+      where: { productId: p.id },
+      select: { rating: true },
+    });
+    if (reviews.length > 0) {
+      const avg = reviews.reduce((s, r) => s + r.rating, 0) / reviews.length;
+      await prisma.product.update({
+        where: { id: p.id },
+        data: {
+          rating: Math.round(avg * 100) / 100,
+          reviewCount: reviews.length,
+        },
+      });
+    }
+  }
+  console.log(`  ✓ Reviews (${REVIEWS.length}) + ratings recomputed`);
 
   // Orders
   for (const o of ORDERS) {

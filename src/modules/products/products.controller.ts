@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import * as productsService from './products.service';
-import { listProductsQuery, productBody } from './products.schema';
+import { listProductsQuery, productBody, createReviewBody } from './products.schema';
 
 export async function listProducts(req: Request, res: Response): Promise<void> {
   const query = listProductsQuery.parse(req.query);
@@ -33,4 +33,10 @@ export async function updateProduct(req: Request, res: Response): Promise<void> 
 export async function deleteProduct(req: Request, res: Response): Promise<void> {
   const result = await productsService.deleteProduct(req.params.id as string, req.user!);
   res.status(200).json(result);
+}
+
+export async function createReview(req: Request, res: Response): Promise<void> {
+  const body = createReviewBody.parse(req.body);
+  const result = await productsService.createReview(req.params.id as string, body, req.user!);
+  res.status(201).json(result);
 }

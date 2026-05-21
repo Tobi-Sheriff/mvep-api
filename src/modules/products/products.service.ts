@@ -1,7 +1,7 @@
 import { prisma } from '../../lib/prisma';
-import { ForbiddenError, NotFoundError } from '../../lib/errors';
+import { ConflictError, ForbiddenError, NotFoundError } from '../../lib/errors';
 import type { AuthUser } from '../../middleware/authenticate';
-import type { ListProductsQuery, ProductBody } from './products.schema';
+import type { ListProductsQuery, ProductBody, CreateReviewBody } from './products.schema';
 
 type DecimalLike = { toString(): string };
 
@@ -198,6 +198,52 @@ export async function updateProduct(id: string, body: ProductBody, requestingUse
   });
 
   return toVendorProduct(updated);
+}
+
+export async function createReview(
+  productId: string,
+  body: CreateReviewBody,
+  requestingUser: AuthUser,
+) {
+  const product = await prisma.product.findUnique({ where: { id: productId } });
+  if (!product) throw new NotFoundError('Product not found');
+
+  const existing = await prisma.review.findFirst({
+    where: { productId, userId: requestingUser.id },
+  });
+  if (existing) throw new ConflictError('You have already reviewed this product');
+
+  const user = await prisma.user.findUnique({ where: { id: requestingUser.id } });
+  if (!user) throw new NotFoundError('User not found');
+
+  return prisma.$transaction(async (tx) => {
+    const review = await tx.review.create({
+      data: {
+        productId,
+        userId: requestingUser.id,
+        userName: user.name,
+        rating: body.rating,
+        comment: body.comment,
+      },
+      select: { id: true, userId: true, userName: true, rating: true, comment: true, createdAt: true },
+    });
+
+    const allReviews = await tx.review.findMany({
+      where: { productId },
+      select: { rating: true },
+    });
+    const avg = allReviews.reduce((s, r) => s + r.rating, 0) / allReviews.length;
+
+    await tx.product.update({
+      where: { id: productId },
+      data: {
+        rating: Math.round(avg * 100) / 100,
+        reviewCount: allReviews.length,
+      },
+    });
+
+    return { ...review, createdAt: review.createdAt.toISOString() };
+  });
 }
 
 export async function deleteProduct(id: string, requestingUser: AuthUser) {

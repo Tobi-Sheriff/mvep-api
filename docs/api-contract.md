@@ -171,6 +171,29 @@ Query params:
 ]
 ```
 
+### POST `/products/:id/reviews`
+**Protected — any authenticated role. One review per user per product.**
+```json
+// Request
+{ "rating": 1, "comment": "string" }
+
+// Response 201
+{
+  "id": "string",
+  "userId": "string",
+  "userName": "string",
+  "rating": 0,
+  "comment": "string",
+  "createdAt": "ISO 8601"
+}
+
+// Response 401 — unauthenticated
+// Response 404 — product not found
+// Response 409 — user already reviewed this product
+{ "message": "You have already reviewed this product" }
+```
+Posting a review atomically updates `product.rating` (average of all reviews, 2 d.p.) and `product.reviewCount`.
+
 ### POST `/products`
 **Protected — vendor or admin**
 

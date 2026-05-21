@@ -107,6 +107,45 @@ Update the MSW handler to include `devCode` in its `register` response.
 
 ---
 
+### Change 6 — Product reviews: new POST endpoint
+
+The backend now supports submitting product reviews. This endpoint did not exist before.
+
+**New endpoint:** `POST /api/v1/products/:id/reviews`
+**Auth:** Any authenticated user. One review per user per product (duplicate → 409).
+
+**Request body:**
+```json
+{ "rating": 5, "comment": "string" }
+```
+`rating` must be an integer between 1 and 5 inclusive.
+
+**Response 201:**
+```json
+{
+  "id": "string",
+  "userId": "string",
+  "userName": "string",
+  "rating": 5,
+  "comment": "string",
+  "createdAt": "ISO 8601"
+}
+```
+
+**Error responses:**
+- `401` — unauthenticated
+- `404` — product not found
+- `409` — user already reviewed this product: `{ "message": "You have already reviewed this product" }`
+
+**Side effect:** A successful POST atomically updates the product's `rating` (recalculated average, 2 d.p.) and `reviewCount`. Any cached product data should be invalidated after a successful review submission.
+
+**What to add:**
+1. RTK Query `createReview` mutation: `POST /api/v1/products/:id/reviews` with the body above.
+2. After mutation success, invalidate the `getProduct` cache tag for that product ID so the updated rating/reviewCount is refetched.
+3. MSW handler for `POST /api/v1/products/:id/reviews` — return a mock review object with status 201. Also update the MSW `GET /api/v1/products/:id` handler to include `reviewCount: number` in the response shape if it doesn't already.
+
+---
+
 ### Summary of MSW handlers to update
 
 | Handler | Change |
@@ -118,10 +157,15 @@ Update the MSW handler to include `devCode` in its `register` response.
 | `POST /api/v1/products` | Accept `images[]` only; no standalone `image` in request |
 | `PUT /api/v1/products/:id` | Same as POST |
 | `POST /api/v1/auth/register` | Include `devCode` in response |
+| `POST /api/v1/products/:id/reviews` | New handler — return mock review with status 201 |
 
 ### TypeScript types to update
 
-If any of the above endpoints have TypeScript request/response types defined (e.g. in an `api.types.ts` or inline in the RTK Query slice), update those types to match the new shapes.
+If any of the above endpoints have TypeScript request/response types defined (e.g. in an `api.types.ts` or inline in the RTK Query slice), update those types to match the new shapes. Specifically:
+- `CreateOrderRequest` — remove `productName`, `unitPrice`, `total`; add `shippingAddress` and `paymentMethod`
+- `RevenueResponse` — change from `DataPoint[]` to `{ data: DataPoint[], total: number, change: number }`
+- `CreateProductRequest` — remove standalone `image` field
+- `Review` / `CreateReviewRequest` / `CreateReviewResponse` — add these types if not present
 
 ---
 
