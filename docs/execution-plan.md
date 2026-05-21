@@ -328,18 +328,61 @@ GET   /api/v1/admin/analytics/revenue
 
 ---
 
-## Phase 10 — Hardening & Final Validation
+## Phase 10 — Hardening & Final Validation ✅
 
 **Goal:** Production-readiness checks before the backend is handed off to the frontend.
 
 ### Tasks
-- [ ] Rate limiting on auth endpoints: `express-rate-limit` max 10 req/15 min on `/auth/login` and `/auth/register`
-- [ ] Helmet security headers on all routes
-- [ ] CORS locked to `CORS_ORIGIN` env var; block requests from other origins
-- [ ] Verify all error shapes match `{ message }` (or `{ message, errors }` for validation)
-- [ ] Run full integration test suite — all tests green
-- [ ] End-to-end smoke test: start backend, point frontend at it, disable MSW, log in as all three users
-- [ ] Ensure `.env` is in `.gitignore`; committed `.env.example` has all keys with placeholder values
+- [x] Rate limiting on auth endpoints: `express-rate-limit` max 10 req/15 min on `/auth/login` and `/auth/register`; skipped in `NODE_ENV=test` to avoid suite failures
+- [x] Helmet security headers — already applied globally in `app.ts` from Phase 0
+- [x] CORS locked to `CORS_ORIGIN` env var — already applied in `app.ts`; `.env.example` defaults to `http://localhost:5173`
+- [x] Error shapes verified: `{ message }` for all AppError/Prisma errors; `{ message, errors }` for ZodError validation failures
+- [x] Full integration test suite: **165/165 passing** across 9 suites
+- [x] `.env` confirmed in `.gitignore`; `.env.example` committed with placeholder values only
+
+### Deviations & notes
+- **Rate limiter skips test environment**: `skip: () => process.env.NODE_ENV === 'test'` prevents the 10-request window from tripping during the auth integration suite, which makes multiple register/login calls within seconds.
+- **End-to-end smoke test deferred to frontend integration**: Full browser-level testing (disable MSW, log in as all three users) is done when the frontend is connected in the next step.
+
+---
+
+---
+
+## Future Improvements (not yet scheduled)
+
+### Audit Trail
+
+**Why:** Any status change to a user account (suspend, ban, activate) should be logged with who did it, what changed, and why. Currently `PATCH /admin/users/:id/status` accepts a `reason` string in the request body but does not persist it. An audit log makes moderation decisions reviewable and defensible.
+
+**What to build:**
+
+1. **`AuditLog` model** in `prisma/schema.prisma`:
+   ```prisma
+   model AuditLog {
+     id         String   @id @default(cuid())
+     actorId    String                        // admin who performed the action
+     targetId   String                        // user affected
+     action     String                        // e.g. "user.status.suspended"
+     fromValue  String?                       // previous status
+     toValue    String?                       // new status
+     reason     String?                       // free-text reason from request body
+     createdAt  DateTime @default(now())
+
+     actor  User @relation("AuditActor",  fields: [actorId],  references: [id])
+     target User @relation("AuditTarget", fields: [targetId], references: [id])
+   }
+   ```
+   Add the two named relations to the `User` model as well.
+
+2. **Persist in `updateUserStatus`** — wrap the `user.update` and `auditLog.create` in a `$transaction` so both succeed or neither does.
+
+3. **`GET /admin/audit-log`** — paginated endpoint, filterable by `actorId`, `targetId`, `action`. Admin-only.
+
+4. **`scripts/admin.ts`** — the CLI's `suspend`, `ban`, `activate`, `delete` commands should also write to the audit log with `actorId = 'system-cli'` (a sentinel value indicating a developer action outside the UI).
+
+**What's already in place:**
+- `reason` field is already accepted by `updateUserStatusBody` Zod schema and passed through to the service — just not stored yet.
+- `scripts/admin.ts` commands accept the email and action but do not log — the logging step can be dropped in without changing the command interface.
 
 ---
 

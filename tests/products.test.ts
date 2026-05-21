@@ -429,3 +429,102 @@ describe('DELETE /api/v1/products/:id', () => {
     expect(res.status).toBe(404);
   });
 });
+
+// ─── POST /api/v1/products/:id/reviews ───────────────────────────────────────
+
+describe('POST /api/v1/products/:id/reviews', () => {
+  let reviewProductId: string;
+
+  beforeEach(async () => {
+    // Fresh product for each review test — avoids duplicate-review conflicts
+    const p = await prisma.product.create({
+      data: { ...validBody, image: validBody.images[0], vendorId, rating: 0, reviewCount: 0 },
+    });
+    reviewProductId = p.id;
+  });
+
+  it('31: authenticated user posts review → 201 with review fields', async () => {
+    const res = await request(app)
+      .post(`/api/v1/products/${reviewProductId}/reviews`)
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({ rating: 5, comment: 'Great product!' });
+    expect(res.status).toBe(201);
+    expect(res.body).toHaveProperty('id');
+    expect(res.body).toHaveProperty('userId');
+    expect(res.body).toHaveProperty('userName');
+    expect(res.body.rating).toBe(5);
+    expect(res.body.comment).toBe('Great product!');
+    expect(res.body).toHaveProperty('createdAt');
+  });
+
+  it('32: review updates product rating and reviewCount', async () => {
+    await request(app)
+      .post(`/api/v1/products/${reviewProductId}/reviews`)
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({ rating: 4, comment: 'Pretty good.' });
+
+    const productRes = await request(app).get(`/api/v1/products/${reviewProductId}`);
+    expect(productRes.status).toBe(200);
+    expect(productRes.body.reviewCount).toBe(1);
+    expect(productRes.body.rating).toBeCloseTo(4, 1);
+  });
+
+  it('33: two reviews average into correct rating', async () => {
+    await request(app)
+      .post(`/api/v1/products/${reviewProductId}/reviews`)
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({ rating: 5, comment: 'Excellent!' });
+    await request(app)
+      .post(`/api/v1/products/${reviewProductId}/reviews`)
+      .set('Authorization', `Bearer ${vendorToken}`)
+      .send({ rating: 3, comment: 'Decent.' });
+
+    const productRes = await request(app).get(`/api/v1/products/${reviewProductId}`);
+    expect(productRes.body.reviewCount).toBe(2);
+    expect(productRes.body.rating).toBeCloseTo(4, 1); // (5+3)/2 = 4.00
+  });
+
+  it('34: duplicate review from same user → 409', async () => {
+    await request(app)
+      .post(`/api/v1/products/${reviewProductId}/reviews`)
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({ rating: 5, comment: 'First review.' });
+
+    const res = await request(app)
+      .post(`/api/v1/products/${reviewProductId}/reviews`)
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({ rating: 3, comment: 'Duplicate review.' });
+    expect(res.status).toBe(409);
+  });
+
+  it('35: non-existent product → 404', async () => {
+    const res = await request(app)
+      .post('/api/v1/products/nonexistent-id/reviews')
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({ rating: 4, comment: 'Good.' });
+    expect(res.status).toBe(404);
+  });
+
+  it('36: rating out of range → 400', async () => {
+    const res = await request(app)
+      .post(`/api/v1/products/${reviewProductId}/reviews`)
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({ rating: 6, comment: 'Off the charts!' });
+    expect(res.status).toBe(400);
+  });
+
+  it('37: missing comment → 400', async () => {
+    const res = await request(app)
+      .post(`/api/v1/products/${reviewProductId}/reviews`)
+      .set('Authorization', `Bearer ${customerToken}`)
+      .send({ rating: 4 });
+    expect(res.status).toBe(400);
+  });
+
+  it('38: unauthenticated → 401', async () => {
+    const res = await request(app)
+      .post(`/api/v1/products/${reviewProductId}/reviews`)
+      .send({ rating: 4, comment: 'No token.' });
+    expect(res.status).toBe(401);
+  });
+});

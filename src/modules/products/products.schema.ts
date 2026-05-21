@@ -33,5 +33,11 @@ export const productBody = z.object({
   images: z.array(z.string().min(1)).min(1, 'At least one image is required'),
 });
 
+export const createReviewBody = z.object({
+  rating: z.number().int().min(1).max(5),
+  comment: z.string().min(1, 'Comment is required'),
+});
+
 export type ListProductsQuery = z.infer<typeof listProductsQuery>;
 export type ProductBody = z.infer<typeof productBody>;
+export type CreateReviewBody = z.infer<typeof createReviewBody>;
