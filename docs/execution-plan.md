@@ -348,6 +348,27 @@ GET   /api/v1/admin/analytics/revenue
 
 ---
 
+## Phase 11 — GitHub Actions CI ✅
+
+**Goal:** Automated type-check and full integration test run on every push and pull request.
+
+### Tasks
+- [x] Untrack `prisma/migrations/` from `.gitignore` — migration files must be committed so CI can run `prisma migrate deploy`
+- [x] `.github/workflows/ci.yml`:
+  - Triggers on every push (all branches) and PRs targeting `main`
+  - Spins up a `postgres:16-alpine` service container (`mvep_test` DB)
+  - Installs Node 20 with npm cache
+  - `npm ci` → `npx prisma generate` → `npx tsc --noEmit` → `npx prisma migrate deploy` → `npx jest --no-coverage --forceExit`
+  - All required env vars supplied inline (SMTP values are placeholders — email is mocked in tests)
+
+### Deviations & notes
+- **`DATABASE_URL` and `TEST_DATABASE_URL` both point to the same CI database** — `jestSetup.ts` overrides `DATABASE_URL → TEST_DATABASE_URL` at runtime, so both vars must be set even though they're identical in CI.
+- **SMTP placeholder values** — `config/index.ts` validates SMTP vars on startup via Zod. Fake-but-valid strings are sufficient; `jest.mock` in `auth.test.ts` prevents any real SMTP calls.
+- **`--forceExit` on Jest** — ensures the runner exits cleanly if a Prisma connection is not fully closed after `afterAll`.
+- **`prisma/migrations/` unignored** — previously gitignored by mistake. Production deploys also need these files for `prisma migrate deploy`.
+
+---
+
 ## Future Improvements (not yet scheduled)
 
 ### Audit Trail
@@ -383,6 +404,46 @@ GET   /api/v1/admin/analytics/revenue
 **What's already in place:**
 - `reason` field is already accepted by `updateUserStatusBody` Zod schema and passed through to the service — just not stored yet.
 - `scripts/admin.ts` commands accept the email and action but do not log — the logging step can be dropped in without changing the command interface.
+
+### Review Eligibility Gate
+
+**Why:** Currently any authenticated user can review any product regardless of whether they bought it. The correct rule is: a customer may only review a product if they have at least one `delivered` order containing that product. This prevents fake or incentivised reviews and is enforced server-side — the frontend check (hiding the form) is a UX convenience only, not a security boundary.
+
+**Rule — all conditions must be true before a review is accepted:**
+1. Request is authenticated (`401` if not — already enforced)
+2. Authenticated user has role `customer` — non-customers cannot review
+3. Customer has at least one order with `status === 'delivered'` whose `items` array contains the `productId` being reviewed
+4. Customer has not already reviewed this product (`409` — already enforced)
+
+If conditions 2 or 3 fail, return:
+```json
+// 403
+{ "message": "You can only review products you have purchased and received" }
+```
+
+**What to change — `createReview` in `products.service.ts`:**
+```
+1. If requestingUser.role !== 'customer'  →  throw ForbiddenError(message above)
+2. Query orders where customerId === userId AND status === 'delivered'
+3. Filter in JS: any order whose items array contains productId === productId param
+4. If none found  →  throw ForbiddenError(message above)
+5. Continue with existing duplicate check (409) and review creation (201)
+```
+
+**Updated error table for `POST /api/v1/products/:id/reviews`:**
+
+| Status | Condition |
+|--------|-----------|
+| `201` | Review created successfully |
+| `400` | `rating` not an integer 1–5, or `comment` missing |
+| `401` | No valid auth token |
+| `403` | Caller is not a customer, or has no delivered order for this product |
+| `404` | Product not found |
+| `409` | Customer already reviewed this product |
+
+**Frontend note:** The frontend can determine eligibility client-side by inspecting `GET /api/v1/orders/my` — check whether any returned order has `status === 'delivered'` and contains the current `productId` in its `items` array. Use this to conditionally show or hide the review form. The backend guard above is the authority; the frontend check is UX only.
+
+**Tests to update:** The existing review tests in `products.test.ts` use `customerToken` and the product is not in any delivered order, so tests 31–38 will need a delivered order seeded in `beforeEach` for the happy-path tests (31–34) to still pass. Tests 35–38 (404, invalid rating, missing comment, unauthenticated) are unaffected. A new test should cover the `403` case for a customer with no delivered order for that product.
 
 ---
 
