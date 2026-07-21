@@ -8,6 +8,12 @@ export async function listProducts(req: Request, res: Response): Promise<void> {
   res.status(200).json(result);
 }
 
+export async function listMyProducts(req: Request, res: Response): Promise<void> {
+  const query = listProductsQuery.parse(req.query);
+  const result = await productsService.listMyProducts(query, req.user!);
+  res.status(200).json(result);
+}
+
 export async function getProduct(req: Request, res: Response): Promise<void> {
   const result = await productsService.getProduct(req.params.id as string);
   res.status(200).json(result);

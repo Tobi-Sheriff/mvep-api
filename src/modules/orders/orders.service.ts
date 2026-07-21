@@ -60,6 +60,26 @@ function toOrderResponse(order: {
   };
 }
 
+async function getVendorProductIds(vendorUserId: string): Promise<Set<string>> {
+  const vendor = await prisma.vendor.findUnique({ where: { userId: vendorUserId } });
+  if (!vendor) throw new ForbiddenError('No vendor profile found for this user');
+
+  const products = await prisma.product.findMany({
+    where: { vendorId: vendor.id },
+    select: { id: true },
+  });
+  return new Set(products.map((p) => p.id));
+}
+
+function parseItems(raw: unknown): OrderItem[] {
+  if (!Array.isArray(raw)) return [];
+  return raw as OrderItem[];
+}
+
+function orderContainsProducts(order: { items: unknown }, productIds: Set<string>): boolean {
+  return parseItems(order.items).some((item) => productIds.has(item.productId));
+}
+
 export async function createOrder(body: CreateOrderBody, customer: AuthUser) {
   const customerUser = await prisma.user.findUnique({ where: { id: customer.id } });
   if (!customerUser) throw new NotFoundError('User not found');
@@ -108,21 +128,33 @@ export async function createOrder(body: CreateOrderBody, customer: AuthUser) {
   return toOrderResponse(order);
 }
 
-export async function listOrders(filters: ListOrdersQuery) {
+export async function listOrders(filters: ListOrdersQuery, requestingUser: AuthUser) {
   const { status, page, limit } = filters;
   const where = status ? { status } : {};
 
-  const [orders, total] = await Promise.all([
-    prisma.order.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      skip: (page - 1) * limit,
-      take: limit,
-    }),
-    prisma.order.count({ where }),
-  ]);
+  if (requestingUser.role === 'admin') {
+    const [orders, total] = await Promise.all([
+      prisma.order.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      prisma.order.count({ where }),
+    ]);
+    return { orders: orders.map(toOrderResponse), total };
+  }
 
-  return { orders: orders.map(toOrderResponse), total };
+  // Vendor: scope to orders containing at least one of their own products.
+  // `items` is a JSON snapshot, so filtering happens in JS after fetching.
+  const productIds = await getVendorProductIds(requestingUser.id);
+  const allOrders = await prisma.order.findMany({ where, orderBy: { createdAt: 'desc' } });
+  const filtered = allOrders.filter((o) => orderContainsProducts(o, productIds));
+
+  const total = filtered.length;
+  const paginated = filtered.slice((page - 1) * limit, (page - 1) * limit + limit);
+
+  return { orders: paginated.map(toOrderResponse), total };
 }
 
 export async function listMyOrders(customerId: string, filters: ListOrdersQuery) {
@@ -150,6 +182,11 @@ export async function getOrder(id: string, requestingUser: AuthUser) {
     throw new ForbiddenError();
   }
 
+  if (requestingUser.role === 'vendor') {
+    const productIds = await getVendorProductIds(requestingUser.id);
+    if (!orderContainsProducts(order, productIds)) throw new ForbiddenError();
+  }
+
   return toOrderResponse(order);
 }
 
@@ -160,6 +197,11 @@ export async function updateOrderStatus(
 ) {
   const order = await prisma.order.findUnique({ where: { id } });
   if (!order) throw new NotFoundError('Order not found');
+
+  if (requestingUser.role === 'vendor') {
+    const productIds = await getVendorProductIds(requestingUser.id);
+    if (!orderContainsProducts(order, productIds)) throw new ForbiddenError();
+  }
 
   if (!isValidTransition(order.status as OrderStatus, body.status as OrderStatus)) {
     throw new BadRequestError(`Invalid status transition: ${order.status} → ${body.status}`);

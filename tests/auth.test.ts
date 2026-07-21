@@ -7,9 +7,11 @@ import { prisma, clearDatabase, createTestUser } from './helpers/testSetup';
 
 jest.mock('../src/lib/email', () => ({
   sendVerificationEmail: jest.fn().mockResolvedValue(undefined),
+  sendPasswordResetEmail: jest.fn().mockResolvedValue(undefined),
 }));
 
 const sendEmail = emailModule.sendVerificationEmail as jest.Mock;
+const sendResetEmail = emailModule.sendPasswordResetEmail as jest.Mock;
 
 const validCustomer = {
   name: 'Alice Customer',
@@ -270,6 +272,131 @@ describe('POST /api/v1/auth/login', () => {
       .send({ email: user.email, password });
     expect(res.status).toBe(403);
     expect(res.body.message).toMatch(/banned/i);
+  });
+});
+
+// ─── POST /auth/forgot-password ──────────────────────────────────────────────
+
+describe('POST /api/v1/auth/forgot-password', () => {
+  it('happy path — registered email sends a reset link', async () => {
+    const { user } = await createTestUser('customer');
+    const res = await request(app)
+      .post('/api/v1/auth/forgot-password')
+      .send({ email: user.email });
+    expect(res.status).toBe(200);
+    expect(sendResetEmail).toHaveBeenCalledWith(user.email, expect.any(String));
+  });
+
+  it('unknown email → still 200, no email sent, no enumeration leak', async () => {
+    const res = await request(app)
+      .post('/api/v1/auth/forgot-password')
+      .send({ email: 'nobody@example.com' });
+    expect(res.status).toBe(200);
+    expect(res.body.message).toMatch(/if an account exists/i);
+    expect(sendResetEmail).not.toHaveBeenCalled();
+  });
+
+  it('invalid email format → 400', async () => {
+    const res = await request(app)
+      .post('/api/v1/auth/forgot-password')
+      .send({ email: 'not-an-email' });
+    expect(res.status).toBe(400);
+  });
+
+  it('requesting again invalidates the previous token', async () => {
+    const { user } = await createTestUser('customer');
+    await request(app).post('/api/v1/auth/forgot-password').send({ email: user.email });
+    const firstToken = sendResetEmail.mock.calls[0][1] as string;
+
+    await request(app).post('/api/v1/auth/forgot-password').send({ email: user.email });
+    const secondToken = sendResetEmail.mock.calls[1][1] as string;
+
+    const oldReset = await request(app)
+      .post('/api/v1/auth/reset-password')
+      .send({ token: firstToken, newPassword: 'NewPassword1!' });
+    expect(oldReset.status).toBe(400);
+
+    const newReset = await request(app)
+      .post('/api/v1/auth/reset-password')
+      .send({ token: secondToken, newPassword: 'NewPassword1!' });
+    expect(newReset.status).toBe(200);
+  });
+});
+
+// ─── POST /auth/reset-password ───────────────────────────────────────────────
+
+describe('POST /api/v1/auth/reset-password', () => {
+  it('happy path — resets password and old password stops working', async () => {
+    const { user, password } = await createTestUser('customer');
+    await request(app).post('/api/v1/auth/forgot-password').send({ email: user.email });
+    const token = sendResetEmail.mock.calls[0][1] as string;
+
+    const res = await request(app)
+      .post('/api/v1/auth/reset-password')
+      .send({ token, newPassword: 'BrandNewPassword1!' });
+    expect(res.status).toBe(200);
+
+    const oldLogin = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ email: user.email, password });
+    expect(oldLogin.status).toBe(401);
+
+    const newLogin = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ email: user.email, password: 'BrandNewPassword1!' });
+    expect(newLogin.status).toBe(200);
+  });
+
+  it('token can only be used once', async () => {
+    const { user } = await createTestUser('customer');
+    await request(app).post('/api/v1/auth/forgot-password').send({ email: user.email });
+    const token = sendResetEmail.mock.calls[0][1] as string;
+
+    const first = await request(app)
+      .post('/api/v1/auth/reset-password')
+      .send({ token, newPassword: 'FirstNewPassword1!' });
+    expect(first.status).toBe(200);
+
+    const second = await request(app)
+      .post('/api/v1/auth/reset-password')
+      .send({ token, newPassword: 'SecondNewPassword1!' });
+    expect(second.status).toBe(400);
+  });
+
+  it('unknown token → 400', async () => {
+    const res = await request(app)
+      .post('/api/v1/auth/reset-password')
+      .send({ token: 'not-a-real-token', newPassword: 'SomePassword1!' });
+    expect(res.status).toBe(400);
+    expect(res.body.message).toMatch(/invalid or expired/i);
+  });
+
+  it('short new password → 400', async () => {
+    const { user } = await createTestUser('customer');
+    await request(app).post('/api/v1/auth/forgot-password').send({ email: user.email });
+    const token = sendResetEmail.mock.calls[0][1] as string;
+
+    const res = await request(app)
+      .post('/api/v1/auth/reset-password')
+      .send({ token, newPassword: '123' });
+    expect(res.status).toBe(400);
+    expect(res.body.errors).toHaveProperty('newPassword');
+  });
+
+  it('expired token → 400', async () => {
+    const { user } = await createTestUser('customer');
+    await request(app).post('/api/v1/auth/forgot-password').send({ email: user.email });
+    const token = sendResetEmail.mock.calls[0][1] as string;
+
+    await prisma.passwordResetToken.update({
+      where: { token },
+      data: { expiresAt: new Date(Date.now() - 1000) },
+    });
+
+    const res = await request(app)
+      .post('/api/v1/auth/reset-password')
+      .send({ token, newPassword: 'SomePassword1!' });
+    expect(res.status).toBe(400);
   });
 });
 

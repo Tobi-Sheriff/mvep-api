@@ -77,7 +77,7 @@ src/
 DATABASE_URL=postgresql://user:password@localhost:5432/mvep
 JWT_SECRET=your-secret-key
 JWT_EXPIRES_IN=7d
-PORT=3000
+PORT=4790
 CORS_ORIGIN=http://localhost:5173
 SMTP_HOST=smtp.mailtrap.io
 SMTP_PORT=587

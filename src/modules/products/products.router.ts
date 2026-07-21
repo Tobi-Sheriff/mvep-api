@@ -6,6 +6,7 @@ import * as productsController from './products.controller';
 const router = Router();
 
 router.get('/', productsController.listProducts);
+router.get('/my', authenticate, requireRole('vendor'), productsController.listMyProducts);
 router.get('/:id/reviews', productsController.getProductReviews);
 router.post('/:id/reviews', authenticate, productsController.createReview);
 router.get('/:id', productsController.getProduct);

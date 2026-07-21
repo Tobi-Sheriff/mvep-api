@@ -1,6 +1,7 @@
 import request from 'supertest';
 import { app } from '../src/app';
 import { prisma, clearDatabase, createTestUser } from './helpers/testSetup';
+import type { OrderStatus } from '../src/generated/prisma/client';
 
 // ─── Setup ────────────────────────────────────────────────────────────────────
 
@@ -9,21 +10,32 @@ let customerId: string;
 let vendorToken: string;
 let vendorId: string;
 let productId: string;
+let adminToken: string;
+let otherVendorToken: string;
+let otherProductId: string;
 
 beforeAll(async () => {
   await clearDatabase();
 
   const customer = await createTestUser('customer');
   const vendor = await createTestUser('vendor');
+  const admin = await createTestUser('admin');
+  const otherVendor = await createTestUser('vendor');
 
   customerToken = customer.token;
   customerId = customer.user.id;
   vendorToken = vendor.token;
+  adminToken = admin.token;
+  otherVendorToken = otherVendor.token;
 
   const vendorRecord = await prisma.vendor.findUniqueOrThrow({
     where: { userId: vendor.user.id },
   });
   vendorId = vendorRecord.id;
+
+  const otherVendorRecord = await prisma.vendor.findUniqueOrThrow({
+    where: { userId: otherVendor.user.id },
+  });
 
   const product = await prisma.product.create({
     data: {
@@ -38,12 +50,43 @@ beforeAll(async () => {
     },
   });
   productId = product.id;
+
+  const otherProduct = await prisma.product.create({
+    data: {
+      name: 'Other Vendor Widget',
+      description: 'Belongs to a different vendor',
+      price: 40.00,
+      stock: 50,
+      category: 'Electronics',
+      image: 'other-widget.jpg',
+      images: ['other-widget.jpg'],
+      vendorId: otherVendorRecord.id,
+    },
+  });
+  otherProductId = otherProduct.id;
 });
 
 afterAll(async () => {
   await clearDatabase();
   await prisma.$disconnect();
 });
+
+// An order containing only the *other* vendor's product — used to prove the
+// main `vendorToken` can't see or touch orders outside its own products.
+async function createForeignOrder(status: OrderStatus = 'pending') {
+  return prisma.order.create({
+    data: {
+      customerId,
+      customerName: 'Test Customer',
+      customerEmail: 'c@test.com',
+      items: [
+        { productId: otherProductId, productName: 'Other Vendor Widget', quantity: 1, unitPrice: 40 },
+      ] as never,
+      total: 40,
+      status,
+    },
+  });
+}
 
 // ─── POST /api/v1/orders ──────────────────────────────────────────────────────
 
@@ -177,13 +220,33 @@ describe('POST /api/v1/orders', () => {
 // ─── GET /api/v1/orders (vendor/admin) ────────────────────────────────────────
 
 describe('GET /api/v1/orders', () => {
-  it('10: vendor sees all orders', async () => {
+  it('10: vendor sees only orders containing their own products', async () => {
+    const foreign = await createForeignOrder();
     const res = await request(app)
       .get('/api/v1/orders')
       .set('Authorization', `Bearer ${vendorToken}`);
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body.orders)).toBe(true);
     expect(typeof res.body.total).toBe('number');
+    expect(res.body.orders.some((o: { id: string }) => o.id === foreign.id)).toBe(false);
+  });
+
+  it('10b: admin sees orders across all vendors, unscoped', async () => {
+    const foreign = await createForeignOrder();
+    const res = await request(app)
+      .get('/api/v1/orders')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.orders.some((o: { id: string }) => o.id === foreign.id)).toBe(true);
+  });
+
+  it('10c: a different vendor sees only orders containing their own product', async () => {
+    const foreign = await createForeignOrder();
+    const res = await request(app)
+      .get('/api/v1/orders')
+      .set('Authorization', `Bearer ${otherVendorToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.orders.some((o: { id: string }) => o.id === foreign.id)).toBe(true);
   });
 
   it('11: customer blocked → 403', async () => {
@@ -270,8 +333,8 @@ describe('GET /api/v1/orders/:id', () => {
           customerId: otherCustomer.user.id,
           customerName: 'Other Customer',
           customerEmail: 'o@test.com',
-          items: [] as never,
-          total: 0,
+          items: [{ productId, productName: 'Test Widget', quantity: 1, unitPrice: 25 }] as never,
+          total: 25,
           status: 'pending',
         },
       }),
@@ -296,10 +359,26 @@ describe('GET /api/v1/orders/:id', () => {
     expect(res.status).toBe(403);
   });
 
-  it('14: vendor fetches any order → 200', async () => {
+  it('14: vendor fetches any customer order containing their own product → 200', async () => {
     const res = await request(app)
       .get(`/api/v1/orders/${otherOrderId}`)
       .set('Authorization', `Bearer ${vendorToken}`);
+    expect(res.status).toBe(200);
+  });
+
+  it('14b: vendor blocked from an order containing only another vendor\'s product → 403', async () => {
+    const foreign = await createForeignOrder();
+    const res = await request(app)
+      .get(`/api/v1/orders/${foreign.id}`)
+      .set('Authorization', `Bearer ${vendorToken}`);
+    expect(res.status).toBe(403);
+  });
+
+  it('14c: admin fetches any order regardless of vendor → 200', async () => {
+    const foreign = await createForeignOrder();
+    const res = await request(app)
+      .get(`/api/v1/orders/${foreign.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
     expect(res.status).toBe(200);
   });
 
@@ -314,13 +393,19 @@ describe('GET /api/v1/orders/:id', () => {
 // ─── PATCH /api/v1/orders/:id/status ─────────────────────────────────────────
 
 describe('PATCH /api/v1/orders/:id/status', () => {
+  // productId isn't assigned until the top-level beforeAll runs, so this must
+  // be evaluated lazily (at test-run time), not captured at describe-collection time.
+  function ownedItems() {
+    return [{ productId, productName: 'Test Widget', quantity: 1, unitPrice: 25 }] as never;
+  }
+
   async function createPendingOrder() {
     return prisma.order.create({
       data: {
         customerId,
         customerName: 'Test Customer',
         customerEmail: 'c@test.com',
-        items: [] as never,
+        items: ownedItems(),
         total: 0,
         status: 'pending',
       },
@@ -339,7 +424,7 @@ describe('PATCH /api/v1/orders/:id/status', () => {
 
   it('17: processing → shipped', async () => {
     const order = await prisma.order.create({
-      data: { customerId, customerName: 'C', customerEmail: 'c@t.com', items: [] as never, total: 0, status: 'processing' },
+      data: { customerId, customerName: 'C', customerEmail: 'c@t.com', items: ownedItems(), total: 0, status: 'processing' },
     });
     const res = await request(app)
       .patch(`/api/v1/orders/${order.id}/status`)
@@ -351,7 +436,7 @@ describe('PATCH /api/v1/orders/:id/status', () => {
 
   it('18: shipped → delivered', async () => {
     const order = await prisma.order.create({
-      data: { customerId, customerName: 'C', customerEmail: 'c@t.com', items: [] as never, total: 0, status: 'shipped' },
+      data: { customerId, customerName: 'C', customerEmail: 'c@t.com', items: ownedItems(), total: 0, status: 'shipped' },
     });
     const res = await request(app)
       .patch(`/api/v1/orders/${order.id}/status`)
@@ -373,7 +458,7 @@ describe('PATCH /api/v1/orders/:id/status', () => {
 
   it('20: processing → cancelled', async () => {
     const order = await prisma.order.create({
-      data: { customerId, customerName: 'C', customerEmail: 'c@t.com', items: [] as never, total: 0, status: 'processing' },
+      data: { customerId, customerName: 'C', customerEmail: 'c@t.com', items: ownedItems(), total: 0, status: 'processing' },
     });
     const res = await request(app)
       .patch(`/api/v1/orders/${order.id}/status`)
@@ -385,7 +470,7 @@ describe('PATCH /api/v1/orders/:id/status', () => {
 
   it('21: shipped → pending (invalid backward) → 400', async () => {
     const order = await prisma.order.create({
-      data: { customerId, customerName: 'C', customerEmail: 'c@t.com', items: [] as never, total: 0, status: 'shipped' },
+      data: { customerId, customerName: 'C', customerEmail: 'c@t.com', items: ownedItems(), total: 0, status: 'shipped' },
     });
     const res = await request(app)
       .patch(`/api/v1/orders/${order.id}/status`)
@@ -399,7 +484,7 @@ describe('PATCH /api/v1/orders/:id/status', () => {
 
   it('22: delivered → cancelled (terminal) → 400', async () => {
     const order = await prisma.order.create({
-      data: { customerId, customerName: 'C', customerEmail: 'c@t.com', items: [] as never, total: 0, status: 'delivered' },
+      data: { customerId, customerName: 'C', customerEmail: 'c@t.com', items: ownedItems(), total: 0, status: 'delivered' },
     });
     const res = await request(app)
       .patch(`/api/v1/orders/${order.id}/status`)
@@ -416,5 +501,23 @@ describe('PATCH /api/v1/orders/:id/status', () => {
       .set('Authorization', `Bearer ${customerToken}`)
       .send({ status: 'processing' });
     expect(res.status).toBe(403);
+  });
+
+  it('24: vendor blocked from updating an order containing only another vendor\'s product → 403', async () => {
+    const foreign = await createForeignOrder();
+    const res = await request(app)
+      .patch(`/api/v1/orders/${foreign.id}/status`)
+      .set('Authorization', `Bearer ${vendorToken}`)
+      .send({ status: 'processing' });
+    expect(res.status).toBe(403);
+  });
+
+  it('25: admin updates any order regardless of vendor → 200', async () => {
+    const foreign = await createForeignOrder();
+    const res = await request(app)
+      .patch(`/api/v1/orders/${foreign.id}/status`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ status: 'processing' });
+    expect(res.status).toBe(200);
   });
 });

@@ -5,6 +5,8 @@ import {
   verifyEmailSchema,
   resendVerificationSchema,
   loginSchema,
+  forgotPasswordSchema,
+  resetPasswordSchema,
 } from './auth.schema';
 
 export async function register(req: Request, res: Response): Promise<void> {
@@ -28,6 +30,18 @@ export async function resendVerification(req: Request, res: Response): Promise<v
 export async function login(req: Request, res: Response): Promise<void> {
   const body = loginSchema.parse(req.body);
   const result = await authService.login(body);
+  res.status(200).json(result);
+}
+
+export async function forgotPassword(req: Request, res: Response): Promise<void> {
+  const body = forgotPasswordSchema.parse(req.body);
+  const result = await authService.forgotPassword(body.email);
+  res.status(200).json(result);
+}
+
+export async function resetPassword(req: Request, res: Response): Promise<void> {
+  const body = resetPasswordSchema.parse(req.body);
+  const result = await authService.resetPassword(body);
   res.status(200).json(result);
 }
 

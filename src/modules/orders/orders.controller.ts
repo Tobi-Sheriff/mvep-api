@@ -10,7 +10,7 @@ export async function createOrder(req: Request, res: Response): Promise<void> {
 
 export async function listOrders(req: Request, res: Response): Promise<void> {
   const query = listOrdersQuery.parse(req.query);
-  const result = await ordersService.listOrders(query);
+  const result = await ordersService.listOrders(query, req.user!);
   res.status(200).json(result);
 }
 

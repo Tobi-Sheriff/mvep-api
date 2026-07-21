@@ -1,7 +1,8 @@
+import { randomBytes, randomInt } from 'crypto';
 import { prisma } from '../../lib/prisma';
 import { hashPassword, comparePassword } from '../../lib/hash';
 import { signToken } from '../../lib/jwt';
-import { sendVerificationEmail } from '../../lib/email';
+import { sendVerificationEmail, sendPasswordResetEmail } from '../../lib/email';
 import { config } from '../../config';
 import {
   BadRequestError,
@@ -10,7 +11,7 @@ import {
   NotFoundError,
   UnauthorisedError,
 } from '../../lib/errors';
-import type { RegisterBody, VerifyEmailBody, LoginBody } from './auth.schema';
+import type { RegisterBody, VerifyEmailBody, LoginBody, ResetPasswordBody } from './auth.schema';
 
 interface UserResponse {
   id: string;
@@ -31,7 +32,7 @@ function toUserResponse(user: {
 }
 
 function generateCode(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  return randomInt(100000, 1000000).toString();
 }
 
 export async function register(data: RegisterBody) {
@@ -123,6 +124,38 @@ export async function login(data: { email: string; password: string }) {
 
   const token = signToken({ sub: user.id, role: user.role });
   return { user: toUserResponse(user), token };
+}
+
+export async function forgotPassword(email: string) {
+  const user = await prisma.user.findUnique({ where: { email } });
+
+  // Always return the same response whether or not the email is registered —
+  // this is the one auth endpoint where user enumeration is worth closing off,
+  // since it's the classic target for "which emails have accounts here" probing.
+  if (user) {
+    await prisma.passwordResetToken.deleteMany({ where: { email } });
+    const token = randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+    await prisma.passwordResetToken.create({ data: { token, email, expiresAt } });
+    await sendPasswordResetEmail(email, token);
+  }
+
+  return { message: 'If an account exists for that email, a reset link has been sent.' };
+}
+
+export async function resetPassword(data: ResetPasswordBody) {
+  const record = await prisma.passwordResetToken.findUnique({ where: { token: data.token } });
+  if (!record || record.expiresAt < new Date()) {
+    throw new BadRequestError('Invalid or expired reset token');
+  }
+
+  const password = await hashPassword(data.newPassword);
+  await prisma.$transaction([
+    prisma.user.update({ where: { email: record.email }, data: { password } }),
+    prisma.passwordResetToken.delete({ where: { token: data.token } }),
+  ]);
+
+  return { message: 'Password reset successful' };
 }
 
 export async function me(userId: string) {

@@ -35,8 +35,9 @@ jobs:
       JWT_SECRET: ci-test-jwt-secret-key-not-for-production-use-only
       JWT_EXPIRES_IN: 7d
       NODE_ENV: test
-      PORT: 3000
+      PORT: 4790
       CORS_ORIGIN: http://localhost:5173
+      FRONTEND_URL: http://localhost:5173
 
       # SMTP values must pass Zod validation on startup.
       # Actual email sending is mocked in integration tests (jest.mock).

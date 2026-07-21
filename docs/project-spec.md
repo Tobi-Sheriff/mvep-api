@@ -209,8 +209,9 @@ app.use('/api/v1/admin',     adminRouter);
 | `TEST_DATABASE_URL` | Separate DB for tests | `postgresql://localhost:5432/mvep_test` |
 | `JWT_SECRET` | Signing secret (min 32 chars) | Any long random string |
 | `JWT_EXPIRES_IN` | Token TTL | `7d` |
-| `PORT` | HTTP port | `3000` |
-| `CORS_ORIGIN` | Allowed frontend origin | `http://localhost:5173` |
+| `PORT` | HTTP port | `4790` |
+| `CORS_ORIGIN` | Allowed frontend origin(s), comma-separated | `http://localhost:5173` |
+| `FRONTEND_URL` | Canonical frontend URL used to build links in emails (password reset) | `http://localhost:5173` |
 | `SMTP_HOST` | Email server host | `smtp.mailtrap.io` |
 | `SMTP_PORT` | Email server port | `587` |
 | `SMTP_USER` | Email server user | Mailtrap credentials |

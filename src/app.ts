@@ -12,8 +12,18 @@ import { adminRouter } from './modules/admin/admin.router';
 
 const app = express();
 
+// Required for correct client IPs (and therefore correct rate limiting) behind
+// a platform reverse proxy (Render/Railway/Fly/etc.) in production.
+if (config.NODE_ENV === 'production') {
+  app.set('trust proxy', 1);
+}
+
+const corsOrigins = config.CORS_ORIGIN.split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
 app.use(helmet());
-app.use(cors({ origin: config.CORS_ORIGIN, credentials: true }));
+app.use(cors({ origin: corsOrigins, credentials: true }));
 app.use(express.json());
 
 app.get('/', (_req, res) => {
