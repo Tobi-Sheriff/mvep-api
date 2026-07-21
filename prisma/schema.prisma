@@ -127,3 +127,12 @@ model VerificationCode {
   code      String
   expiresAt DateTime
 }
+
+model PasswordResetToken {
+  token     String   @id
+  email     String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([email])
+}

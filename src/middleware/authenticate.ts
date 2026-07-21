@@ -1,7 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import { verifyToken } from '../lib/jwt';
-import { UnauthorisedError } from '../lib/errors';
+import { UnauthorisedError, ForbiddenError } from '../lib/errors';
 import { UserRole } from '../generated/prisma/client';
+import { prisma } from '../lib/prisma';
 
 export interface AuthUser {
   id: string;
@@ -17,7 +18,7 @@ declare global {
   }
 }
 
-export function authenticate(req: Request, _res: Response, next: NextFunction): void {
+export async function authenticate(req: Request, _res: Response, next: NextFunction): Promise<void> {
   const authHeader = req.headers.authorization;
 
   if (!authHeader?.startsWith('Bearer ')) {
@@ -27,11 +28,34 @@ export function authenticate(req: Request, _res: Response, next: NextFunction): 
 
   const token = authHeader.slice(7);
 
+  let sub: string;
   try {
-    const payload = verifyToken(token);
-    req.user = { id: payload.sub, role: payload.role };
-    next();
+    sub = verifyToken(token).sub;
   } catch {
     next(new UnauthorisedError('Invalid or expired token'));
+    return;
   }
+
+  // Re-check the account on every request so a token issued before a ban/suspension
+  // (or a role change) can't keep working until it naturally expires.
+  const user = await prisma.user.findUnique({
+    where: { id: sub },
+    select: { id: true, role: true, status: true },
+  });
+
+  if (!user) {
+    next(new UnauthorisedError('Invalid or expired token'));
+    return;
+  }
+  if (user.status === 'suspended') {
+    next(new ForbiddenError('Account suspended'));
+    return;
+  }
+  if (user.status === 'banned') {
+    next(new ForbiddenError('Account banned'));
+    return;
+  }
+
+  req.user = { id: user.id, role: user.role };
+  next();
 }

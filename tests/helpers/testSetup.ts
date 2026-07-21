@@ -10,7 +10,7 @@ const TEST_PASSWORD = 'TestPassword123!';
 
 export async function clearDatabase(): Promise<void> {
   await prisma.$executeRawUnsafe(
-    `TRUNCATE TABLE "VerificationCode", "Wishlist", "Review", "Order", "Product", "Vendor", "User" RESTART IDENTITY CASCADE`,
+    `TRUNCATE TABLE "VerificationCode", "PasswordResetToken", "Wishlist", "Review", "Order", "Product", "Vendor", "User" RESTART IDENTITY CASCADE`,
   );
 }
 

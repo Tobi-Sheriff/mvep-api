@@ -2,7 +2,6 @@ import { Request, Response, NextFunction } from 'express';
 import { ZodError } from 'zod';
 import { Prisma } from '../generated/prisma/client';
 import { AppError } from '../lib/errors';
-import { config } from '../config';
 
 export function errorHandler(
   err: unknown,
@@ -36,9 +35,9 @@ export function errorHandler(
     }
   }
 
-  if (config.NODE_ENV !== 'production') {
-    console.error(err);
-  }
+  // Always log server-side — production still needs to see what broke,
+  // it just never gets reflected back to the client.
+  console.error(err);
 
   res.status(500).json({ message: 'Internal server error' });
 }

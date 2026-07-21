@@ -49,7 +49,7 @@ npm run db:seed
 npm run dev
 ```
 
-Server starts on `http://localhost:3000` by default.
+Server starts on `http://localhost:4790` by default.
 
 ---
 
@@ -62,7 +62,7 @@ DATABASE_URL=postgresql://user:password@localhost:5432/mvep_dev
 TEST_DATABASE_URL=postgresql://user:password@localhost:5432/mvep_test
 JWT_SECRET=your-secret-key-minimum-32-characters
 JWT_EXPIRES_IN=7d
-PORT=3000
+PORT=4790
 CORS_ORIGIN=http://localhost:5173
 SMTP_HOST=smtp.mailtrap.io
 SMTP_PORT=587
@@ -215,8 +215,8 @@ Tests run against a dedicated test database. Migrations are applied automaticall
 
 ## Connecting to the Frontend
 
-1. Start this API: `npm run dev` (port 3000)
-2. In the frontend repo, set `VITE_API_BASE_URL=http://localhost:3000/api/v1`
+1. Start this API: `npm run dev` (port 4790)
+2. In the frontend repo, set `VITE_API_BASE_URL=http://localhost:4790/api/v1`
 3. Disable MSW in the frontend (set `VITE_MSW_ENABLED=false` or equivalent)
 4. Log in with any seed account
 

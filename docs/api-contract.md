@@ -85,6 +85,34 @@ All errors return `{ "message": "string" }`. Validation errors may add `"errors"
 { "message": "Account suspended" | "Account banned" }
 ```
 
+### POST `/auth/forgot-password`
+**Public** — rate-limited (5/hour)
+
+> Always returns 200 regardless of whether the email is registered, to avoid
+> leaking which emails have accounts. If registered, mints a random 30-minute
+> token and emails a reset link (`{FRONTEND_URL}/reset-password?token=...`).
+
+```json
+// Request
+{ "email": "string" }
+
+// Response 200 (always)
+{ "message": "If an account exists for that email, a reset link has been sent." }
+```
+
+### POST `/auth/reset-password`
+**Public** — rate-limited (10/15min)
+```json
+// Request
+{ "token": "string", "newPassword": "string" }
+
+// Response 200
+{ "message": "Password reset successful" }
+
+// Response 400 — invalid, already-used, or expired token
+{ "message": "Invalid or expired reset token" }
+```
+
 ### POST `/auth/logout`
 **Protected (any role)**
 ```json
@@ -145,6 +173,21 @@ Query params:
   "page": 1,
   "totalPages": 0
 }
+```
+
+### GET `/products/my`
+**Protected — vendor only**
+
+> Same query params, filters, and CustomerProduct response shape as `GET /products`
+> above — the only difference is the result is scoped server-side to the
+> authenticated vendor's own products via their vendor profile.
+
+```json
+// Response 200 — same shape as GET /products, scoped to the caller's products
+{ "data": [CustomerProduct], "total": 0, "page": 1, "totalPages": 0 }
+
+// Response 403 — non-vendor token, or vendor token with no vendor profile
+{ "message": "Forbidden" }
 ```
 
 ### GET `/products/:id`
@@ -255,6 +298,10 @@ Posting a review atomically updates `product.rating` (average of all reviews, 2 
 ### GET `/orders`
 **Protected — vendor or admin only**
 
+> Vendor tokens are scoped server-side to orders containing at least one of that
+> vendor's own products (matched against the order's item snapshot). Admin sees
+> every order platform-wide, unscoped.
+
 Query params: `status`, `page` (default 1), `limit` (default 20)
 
 ```json
@@ -277,9 +324,14 @@ Query params: `status`, `page` (default 1), `limit` (default 20)
 
 ### GET `/orders/:id`
 **Protected — order owner (customer), vendor, or admin**
+
+> A vendor may only fetch an order that contains at least one of their own
+> products, regardless of which customer placed it. Admin is unscoped.
+
 ```json
 // Response 200 — Order object
-// Response 403 — customer accessing another user's order
+// Response 403 — customer accessing another user's order, or vendor accessing
+// an order that contains none of their own products
 // Response 404 — order not found
 ```
 
@@ -334,6 +386,9 @@ Query params: `status`, `page` (default 1), `limit` (default 20)
 ### PATCH `/orders/:id/status`
 **Protected — vendor or admin**
 
+> A vendor may only update an order that contains at least one of their own
+> products. Admin is unscoped.
+
 Valid transitions:
 - `pending → processing`
 - `pending → cancelled`
@@ -349,7 +404,7 @@ Valid transitions:
 // Response 200 — updated Order object
 // Response 400 — invalid transition
 { "message": "Invalid status transition: <current> → <requested>" }
-// Response 403 — customer token
+// Response 403 — customer token, or vendor with no owned products on this order
 // Response 404 — order not found
 ```
 

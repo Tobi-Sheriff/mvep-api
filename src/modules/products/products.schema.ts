@@ -22,6 +22,10 @@ export const listProductsQuery = z.object({
   sort: z.enum(['newest', 'price_asc', 'price_desc', 'popular']).default('newest'),
 });
 
+const imageUrl = z
+  .string()
+  .refine((val) => /^https?:\/\/.+/i.test(val), 'Image must be a valid http:// or https:// URL');
+
 export const productBody = z.object({
   name: z.string().min(1, 'Name is required'),
   description: z.string().min(1, 'Description is required'),
@@ -30,7 +34,10 @@ export const productBody = z.object({
   category: z.enum(PRODUCT_CATEGORIES, {
     error: () => ({ message: `Category must be one of: ${PRODUCT_CATEGORIES.join(', ')}` }),
   }),
-  images: z.array(z.string().min(1)).min(1, 'At least one image is required'),
+  images: z
+    .array(imageUrl)
+    .min(1, 'At least one image is required')
+    .max(8, 'Maximum 8 images allowed'),
 });
 
 export const createReviewBody = z.object({

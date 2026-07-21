@@ -3,8 +3,8 @@ dist/
 .env
 *.env.local
 
-# Prisma
-prisma/migrations/
+# Prisma generated client (rebuilt from schema on each install/generate)
+# prisma/migrations/ is intentionally tracked — needed for CI and production deploys
 
 # Logs
 logs/

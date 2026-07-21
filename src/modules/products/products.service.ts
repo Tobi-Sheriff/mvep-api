@@ -86,10 +86,12 @@ function toVendorProduct(p: {
   };
 }
 
-export async function listProducts(filters: ListProductsQuery) {
+async function findProducts(filters: ListProductsQuery, vendorId?: string) {
   const { page, limit, search, category, minPrice, maxPrice, rating, sort } = filters;
 
   const where: Record<string, unknown> = {};
+
+  if (vendorId) where.vendorId = vendorId;
 
   if (search?.trim()) {
     where.OR = [
@@ -131,6 +133,17 @@ export async function listProducts(filters: ListProductsQuery) {
     page,
     totalPages: Math.ceil(total / limit),
   };
+}
+
+export async function listProducts(filters: ListProductsQuery) {
+  return findProducts(filters);
+}
+
+export async function listMyProducts(filters: ListProductsQuery, requestingUser: AuthUser) {
+  const vendor = await prisma.vendor.findUnique({ where: { userId: requestingUser.id } });
+  if (!vendor) throw new ForbiddenError('No vendor profile found for this user');
+
+  return findProducts(filters, vendor.id);
 }
 
 export async function getProduct(id: string) {

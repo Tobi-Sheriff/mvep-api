@@ -187,6 +187,55 @@ describe('GET /api/v1/products', () => {
   });
 });
 
+// ─── GET /api/v1/products/my ─────────────────────────────────────────────────
+
+describe('GET /api/v1/products/my', () => {
+  it('vendor sees only their own products', async () => {
+    const res = await request(app)
+      .get('/api/v1/products/my')
+      .set('Authorization', `Bearer ${vendorToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(SEED_COUNT);
+    for (const item of res.body.data) {
+      expect(item.vendorId).toBe(vendorId);
+    }
+  });
+
+  it("a different vendor with no products sees an empty list, not the platform catalog", async () => {
+    const otherVendor = await createTestUser('vendor');
+    const res = await request(app)
+      .get('/api/v1/products/my')
+      .set('Authorization', `Bearer ${otherVendor.token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([]);
+    expect(res.body.total).toBe(0);
+  });
+
+  it('supports the same filters as the public listing (e.g. category)', async () => {
+    const res = await request(app)
+      .get('/api/v1/products/my?category=Electronics')
+      .set('Authorization', `Bearer ${vendorToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.data.length).toBeGreaterThan(0);
+    for (const item of res.body.data) {
+      expect(item.category).toBe('Electronics');
+      expect(item.vendorId).toBe(vendorId);
+    }
+  });
+
+  it('customer token → 403', async () => {
+    const res = await request(app)
+      .get('/api/v1/products/my')
+      .set('Authorization', `Bearer ${customerToken}`);
+    expect(res.status).toBe(403);
+  });
+
+  it('no token → 401', async () => {
+    const res = await request(app).get('/api/v1/products/my');
+    expect(res.status).toBe(401);
+  });
+});
+
 // ─── GET /api/v1/products/:id ─────────────────────────────────────────────────
 
 describe('GET /api/v1/products/:id', () => {
